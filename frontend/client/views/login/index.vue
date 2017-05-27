@@ -200,6 +200,13 @@ export default {
   },
 
   mounted: function () {
+    // demo
+    this.$message({
+      message: 'Try logging in with "goldfish" as token',
+      type: 'warning',
+      duration: 0,
+      showCloseButton: true
+    })
     // fetch csrf for login post request later
     this.fetchCSRF()
     // fetch vault cluster details
