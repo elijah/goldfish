@@ -9,6 +9,7 @@ import * as filters from './filters'
 import { TOGGLE_SIDEBAR } from 'vuex-store/mutation-types'
 import Notification from 'vue-bulma-notification'
 import Message from 'vue-bulma-message'
+import hljs from 'highlight.js'
 
 Vue.prototype.$http = axios
 Vue.axios = axios
@@ -60,21 +61,15 @@ Vue.prototype.$notify = openNotification
 function handleError (error) {
   // if the server gave a response message, print that
   if (error.response.data.error) {
+    // duration should be proportional to the error message length
     openNotification({
       title: 'Error: ' + error.response.status,
       message: error.response.data.error,
-      type: 'danger'
+      type: 'danger',
+      duration: error.response.data.error.length > 60 ? 20000 : 4500
     })
     console.log(error.response.data.error)
   } else {
-    if (error.response.status === 403) {
-      // either user is not logged in, or user's actions were denied by vault
-      openNotification({
-        title: 'Error: ' + error.response.status.toString(),
-        message: 'Invalid CSRF. Please refresh page',
-        type: 'danger'
-      })
-    }
     if (error.response.status === 404) {
       openNotification({
         title: 'Error: 404',
@@ -115,5 +110,38 @@ const openMessage = (propsData = {
   })
 }
 Vue.prototype.$message = openMessage
+
+Vue.directive('highlightjs', {
+  deep: true,
+  bind: function (el, binding) {
+    // on first bind, highlight all targets
+    let targets = el.querySelectorAll('code')
+    targets.forEach((target) => {
+      // if a value is directly assigned to the directive, use this
+      // instead of the element content.
+      if (binding.value) {
+        target.textContent = binding.value
+      }
+      hljs.highlightBlock(target)
+    })
+  },
+  componentUpdated: function (el, binding) {
+    // after an update, re-fill the content and then highlight
+    let targets = el.querySelectorAll('code')
+    targets.forEach((target) => {
+      if (binding.value) {
+        target.textContent = binding.value
+        hljs.highlightBlock(target)
+      }
+    })
+  }
+})
+
+// custom directive to set focus on an element when it is loaded into the DOM
+Vue.directive('focus', {
+  inserted: function (el) {
+    el.focus()
+  }
+})
 
 export { app, router, store }

@@ -3,6 +3,8 @@ package vault
 import (
 	"encoding/base64"
 	"errors"
+
+	"github.com/hashicorp/vault/api"
 )
 
 // zeros out credentials, call by defer
@@ -22,10 +24,15 @@ func (auth AuthInfo) RevokeSelf() error {
 
 // encrypt auth details with transit backend
 func (auth *AuthInfo) EncryptAuth() error {
+	client, err := NewGoldfishVaultClient()
+	if err != nil {
+		return err
+	}
+
 	c := GetConfig()
 
-	resp, err := vaultClient.Logical().Write(
-		c.TransitBackend+"/encrypt/"+c.ServerTransitKey,
+	resp, err := client.Logical().Write(
+		c.TransitBackend + "/encrypt/" + c.ServerTransitKey,
 		map[string]interface{}{
 			"plaintext": base64.StdEncoding.EncodeToString([]byte(auth.ID)),
 		})
@@ -44,10 +51,15 @@ func (auth *AuthInfo) EncryptAuth() error {
 
 // decrypt auth details with transit backend
 func (auth *AuthInfo) DecryptAuth() error {
+	client, err := NewGoldfishVaultClient()
+	if err != nil {
+		return err
+	}
+
 	c := GetConfig()
 
-	resp, err := vaultClient.Logical().Write(
-		c.TransitBackend+"/decrypt/"+c.ServerTransitKey,
+	resp, err := client.Logical().Write(
+		c.TransitBackend + "/decrypt/" + c.ServerTransitKey,
 		map[string]interface{}{
 			"ciphertext": auth.ID,
 		})
@@ -67,4 +79,21 @@ func (auth *AuthInfo) DecryptAuth() error {
 
 	auth.ID = string(rawbytes)
 	return nil
+}
+
+// returns a list of capabilities the current auth has on a given path
+func (auth *AuthInfo) CapabilitiesSelf(path string) ([]string, error) {
+	client, err := auth.Client()
+	if err != nil {
+		return []string{}, err
+	}
+	return client.Sys().CapabilitiesSelf(path)
+}
+
+func (auth AuthInfo) DeleteRaw(path string) (*api.Secret, error) {
+	client, err := auth.Client()
+	if err != nil {
+		return nil, err
+	}
+	return client.Logical().Delete(path)
 }

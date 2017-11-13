@@ -2,404 +2,377 @@ package vault
 
 import (
 	"encoding/base64"
-	"fmt"
-	"strings"
 	"testing"
 
-	"github.com/hashicorp/vault/builtin/credential/approle"
-	"github.com/hashicorp/vault/builtin/logical/transit"
-	"github.com/hashicorp/vault/command"
-	"github.com/hashicorp/vault/helper/logformat"
-	"github.com/hashicorp/vault/http"
-	"github.com/hashicorp/vault/logical"
-	"github.com/hashicorp/vault/meta"
-	"github.com/hashicorp/vault/physical"
+	"github.com/caiyeon/goldfish/config"
+	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/api"
-
-	vaultcore "github.com/hashicorp/vault/vault"
-	log "github.com/mgutz/logxi/v1"
-	"github.com/mitchellh/cli"
-	"github.com/gorilla/securecookie"
-
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-func WithPreparedVault(t *testing.T, f func(addr, root, wrappingToken string)) func() {
-	return func() {
-		// setup a vault core
-		logger := logformat.NewVaultLogger(log.LevelTrace)
-		inm := physical.NewInmem(logger)
-		coreConfig := &vaultcore.CoreConfig{
-			Physical: inm,
-			LogicalBackends: map[string]logical.Factory{
-				"transit": transit.Factory,
-			},
-			CredentialBackends: map[string]logical.Factory{
-				"approle": approle.Factory,
-			},
-			DisableMlock: true,
-			Seal:         nil,
-		}
-		core, err := vaultcore.NewCore(coreConfig)
-		So(err, ShouldBeNil)
-
-		// ensure core is uninitialized
-		init, err := core.Initialized()
-		So(err, ShouldBeNil)
-		So(init, ShouldEqual, false)
-
-		// initialize vault core
-		result, err := core.Initialize(&vaultcore.InitParams{
-			BarrierConfig: &vaultcore.SealConfig{
-				SecretShares:    5,
-				SecretThreshold: 3,
-			},
-			RecoveryConfig: nil,
-		})
-		So(err, ShouldBeNil)
-
-		// unseal vault core
-		for i := 0; i < 3; i++ {
-			_, _ = core.Unseal(result.SecretShares[i])
-		}
-		status, _ := core.Sealed()
-		So(status, ShouldEqual, false)
-
-		// setup http connection and mock ui
-		ln, addr := http.TestServer(t, core)
-		defer ln.Close()
-		ui := new(cli.MockUi)
-		m := meta.Meta{
-			ClientToken: result.RootToken,
-			Ui:          ui,
-		}
-
-		// mount transit backend
-		c := &command.MountCommand{Meta: m}
-		args := []string{
-			"-address", addr,
-			"transit",
-		}
-		code := c.Run(args)
-		So(code, ShouldEqual, 0)
-
-		// mount approle backend
-		c2 := &command.AuthEnableCommand{Meta: m}
-		args = []string{
-			"-address", addr,
-			"approle",
-		}
-		code = c2.Run(args)
-		So(code, ShouldEqual, 0)
-
-		// write goldfish policy
-		c3 := &command.PolicyWriteCommand{Meta: m}
-		args = []string{
-			"-address", addr,
-			"goldfish",
-			"../vagrant/policies/goldfish.hcl",
-		}
-		code = c3.Run(args)
-		So(code, ShouldEqual, 0)
-
-		// write goldfish approle
-		c4 := &command.WriteCommand{Meta: m}
-		args = []string{
-			"-address", addr,
-			"auth/approle/role/goldfish",
-			"role_name=goldfish",
-			"secret_id_ttl=5m",
-			"token_ttl=480h",
-			"token_ttl_max=720h",
-			"secret_id_num_uses=1",
-			"policies=default,goldfish",
-		}
-		code = c4.Run(args)
-		So(code, ShouldEqual, 0)
-
-		c5 := &command.WriteCommand{Meta: m}
-		args = []string{
-			"-address", addr,
-			"auth/approle/role/goldfish/role-id",
-			"role_id=goldfish",
-		}
-		code = c5.Run(args)
-		So(code, ShouldEqual, 0)
-
-		// initialize transit key
-		c6 := &command.WriteCommand{Meta: m}
-		args = []string{
-			"-address", addr,
-			"-f",
-			"transit/keys/goldfish",
-		}
-		code = c6.Run(args)
-		So(code, ShouldEqual, 0)
-
-		// write goldfish run-time settings
-		c7 := &command.WriteCommand{Meta: m}
-		args = []string{
-			"-address", addr,
-			"secret/goldfish",
-			"TransitBackend=transit",
-			"UserTransitKey=usertransit",
-			"ServerTransitKey=goldfish",
-			"DefaultSecretPath=secret/",
-			"BulletinPath=secret/bulletins/",
-		}
-		code = c7.Run(args)
-		So(code, ShouldEqual, 0)
-
-		// fetch a token
-		c8 := &command.WriteCommand{Meta: m}
-		args = []string{
-			"-address", addr,
-			"-f",
-			"-wrap-ttl=20m",
-			"auth/approle/role/goldfish/secret-id",
-		}
-		code = c8.Run(args)
-		So(code, ShouldEqual, 0)
-		token := strings.Split(ui.OutputWriter.String(), "wrapping_token:")[1]
-		token = strings.TrimSpace(strings.Split(token, "\n")[0])
-
-		// return address, root token, and goldfish's token in a wrapping token
-		f(addr, result.RootToken, token)
-	}
-}
-
 func TestGoldfishWrapper(t *testing.T) {
+	// start vault in dev mode
+	cfg, ch, _, wrappingToken, err := config.LoadConfigDev()
+	if err != nil {
+		panic(err)
+	}
+	defer close(ch)
 
-Convey("Launching goldfish with vault instance", t, WithPreparedVault(t,
-func(addr, root, wrappingToken string) {
-	// make sure vault was started properly
-	So(len(root), ShouldEqual, 36)
-	So(len(wrappingToken), ShouldEqual, 36)
-	fmt.Println("Started vault core with root token:", root)
+	// bootstrap goldfish to vault
+	SetConfig(cfg.Vault)
+	err = Bootstrap(wrappingToken)
+	if err != nil {
+		panic(err)
+	}
 
-	// setup cmd line args
-	VaultSkipTLS = false
-	VaultAddress = addr
-	ConfigPath   = "secret/goldfish"
-
-	// function will output the token accessor
-	err := StartGoldfishWrapper(
-		wrappingToken,
-		"goldfish",
-		"auth/approle/login",
-	)
-	So(err, ShouldBeNil)
-
-	// test loading config from secret path
-	errorChannel := make(chan error)
-	err = LoadConfig(true, errorChannel)
-	So(err, ShouldBeNil)
-	go func() {
-		for err := range errorChannel {
+	Convey("Testing bootstrap functions", t, func() {
+		Convey("Reusing the server's own token as raw token", func() {
+			err = BootstrapRaw(vaultToken)
 			So(err, ShouldBeNil)
-		}
-	}()
-
-	// this will be imitating the client token
-	rootAuth := &AuthInfo{ID: root, Type: "token"}
-
-	// run-time config
-	Convey("Config should be loaded", func() {
-		c := GetConfig()
-		So(c, ShouldResemble, Config{
-			ServerTransitKey  : "goldfish",
-			UserTransitKey    : "usertransit",
-			TransitBackend    : "transit",
-			DefaultSecretPath : "secret/",
-			BulletinPath      : "secret/bulletins/",
-			LastUpdated       : c.LastUpdated,
 		})
 	})
 
-	// credentials
-	Convey("Encrypting and decrypting credentials should work", func() {
-		So(rootAuth.EncryptAuth(), ShouldBeNil)
-		So(rootAuth.DecryptAuth(), ShouldBeNil)
-		So(rootAuth.ID, ShouldEqual, root)
-	})
+	// start unit tests
+	Convey("Testing API wrapper", t, func() {
+		// this will be imitating the client token
+		rootAuth := &AuthInfo{ID: "goldfish", Type: "token"}
 
-	// secrets
-	Convey("Writing secrets should work", func() {
-		resp, err := rootAuth.WriteSecret("secret/bulletins/testbulletin",
-			"{\"title\": \"Message title\", \"message\": \"Message body\"," +
-			"\"type\": \"is-success\"}",
-		)
-		So(err, ShouldBeNil)
-		So(resp, ShouldBeNil)
-
-		Convey("Reading secrets should work", func() {
-			resp, err := rootAuth.ReadSecret("secret/bulletins/testbulletin")
+		Convey("Server's vault client should not contain a token", func() {
+			client, err := NewVaultClient()
 			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp["title"].(string), ShouldEqual, "Message title")
-			So(resp["message"].(string), ShouldEqual, "Message body")
-			So(resp["type"].(string), ShouldEqual, "is-success")
+			So(client.Token(), ShouldEqual, "")
 		})
 
-		Convey("Reading bulletins should work", func() {
-			bulletins, err := rootAuth.GetBulletins()
-			So(err, ShouldBeNil)
-			So(len(bulletins), ShouldEqual, 1)
-			So(bulletins[0], ShouldResemble, map[string]interface{}{
-				"title": "Message title",
-				"message": "Message body",
-				"type": "is-success",
+		// run-time config
+		Convey("Config should be loaded", func() {
+			c := GetConfig()
+			So(c, ShouldResemble, RuntimeConfig{
+				ServerTransitKey:  "goldfish",
+				UserTransitKey:    "usertransit",
+				TransitBackend:    "transit",
+				DefaultSecretPath: "secret/",
+				BulletinPath:      "secret/bulletins/",
+				LastUpdated:       c.LastUpdated,
 			})
 		})
 
-		Convey("Listing secrets should work", func() {
-			secrets, err := rootAuth.ListSecret("secret/bulletins")
+		// credentials
+		Convey("Encrypting and decrypting credentials should work", func() {
+			root := rootAuth.ID
+			So(rootAuth.EncryptAuth(), ShouldBeNil)
+			So(rootAuth.DecryptAuth(), ShouldBeNil)
+			So(rootAuth.ID, ShouldEqual, root)
+		})
+
+		// secrets
+		Convey("Writing secrets should work", func() {
+			resp, err := rootAuth.WriteSecret("secret/bulletins/testbulletin",
+				"{\"title\": \"Message title\", \"message\": \"Message body\","+
+					"\"type\": \"is-success\"}",
+			)
 			So(err, ShouldBeNil)
-			So(len(secrets), ShouldEqual, 1)
-			So(secrets[0], ShouldEqual, "testbulletin")
+			So(resp, ShouldBeNil)
+
+			Convey("Reading secrets should work", func() {
+				resp, err := rootAuth.ReadSecret("secret/bulletins/testbulletin")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp["title"].(string), ShouldEqual, "Message title")
+				So(resp["message"].(string), ShouldEqual, "Message body")
+				So(resp["type"].(string), ShouldEqual, "is-success")
+			})
+
+			Convey("Reading bulletins should work", func() {
+				bulletins, err := rootAuth.GetBulletins()
+				So(err, ShouldBeNil)
+				So(len(bulletins), ShouldEqual, 4)
+				So(bulletins[3], ShouldResemble, map[string]interface{}{
+					"title":   "Message title",
+					"message": "Message body",
+					"type":    "is-success",
+				})
+			})
+
+			Convey("Listing secrets should work", func() {
+				secrets, err := rootAuth.ListSecret("secret/bulletins")
+				So(err, ShouldBeNil)
+				So(len(secrets), ShouldEqual, 4)
+				So(secrets, ShouldContain, "testbulletin")
+			})
+
+			Convey("Deleting secrets should work", func() {
+				_, err := rootAuth.DeleteSecret("secret/bulletins/testbulletin")
+				So(err, ShouldBeNil)
+
+				Convey("Deleted secrets should not be readable anymore", func() {
+					resp, err := rootAuth.ReadSecret("secret/bulletins/testbulletin")
+					So(err, ShouldNotBeNil)
+					So(resp, ShouldBeNil)
+				})
+			})
+
+			Convey("Wrapping arbitrary data", func() {
+				wrapToken, err := rootAuth.WrapData("300s",
+					`{ "abc": "def", "ghi": "jkl" }`,
+				)
+				So(err, ShouldBeNil)
+				So(wrapToken, ShouldNotBeBlank)
+
+				// empty auth should still be able to unwrap
+				emptyAuth := AuthInfo{}
+				resp, err := emptyAuth.UnwrapData(wrapToken)
+				So(err, ShouldBeNil)
+
+				data := resp.Data
+				So(data, ShouldContainKey, "abc")
+				So(data["abc"].(string), ShouldEqual, "def")
+				So(data["ghi"].(string), ShouldEqual, "jkl")
+			})
 		})
-	})
 
-	// tokens
-	Convey("Creating a token", func() {
-		request := &api.TokenCreateRequest{}
-		resp, err := rootAuth.CreateToken(request, "")
-		So(err, ShouldBeNil)
-		So(len(resp.Auth.ClientToken), ShouldEqual, 36)
-
-		Convey("With a wrapped ttl", func() {
-			resp, err := rootAuth.CreateToken(request, "300s")
+		// tokens
+		Convey("Creating a token", func() {
+			resp, err := rootAuth.CreateToken(&api.TokenCreateRequest{}, false, "", "")
 			So(err, ShouldBeNil)
-			So(len(resp.WrapInfo.Token), ShouldEqual, 36)
+			So(len(resp.Auth.ClientToken), ShouldEqual, 36)
 
-			// SoonTM
-			// Convey("And unwrapping that wrapped token", func() {})
+			tempAuth := &AuthInfo{ID: resp.Auth.ClientToken, Type: "token"}
+
+			Convey("Number of accessors should increase", func() {
+				accessors, err := rootAuth.GetTokenAccessors()
+				So(err, ShouldBeNil)
+				So(len(accessors), ShouldEqual, 3)
+
+				_, err = rootAuth.CreateToken(&api.TokenCreateRequest{}, true, "", "")
+				So(err, ShouldBeNil)
+
+				accessorsAfter, err := rootAuth.GetTokenAccessors()
+				So(err, ShouldBeNil)
+				So(len(accessors)+1, ShouldEqual, len(accessorsAfter))
+			})
+
+			Convey("With a wrapped ttl", func() {
+				resp, err := rootAuth.CreateToken(&api.TokenCreateRequest{}, false, "", "300s")
+				So(err, ShouldBeNil)
+				So(len(resp.WrapInfo.Token), ShouldEqual, 36)
+
+				// empty auth should still be able to unwrap
+				emptyAuth := AuthInfo{}
+				resp, err = emptyAuth.UnwrapData(resp.WrapInfo.Token)
+				So(err, ShouldBeNil)
+				So(len(resp.Auth.ClientToken), ShouldEqual, 36)
+			})
+
+			Convey("Token lookup self, renew self, and revoke self", func() {
+				_, err := tempAuth.LookupSelf()
+				So(err, ShouldBeNil)
+
+				_, err = tempAuth.RenewSelf()
+				So(err, ShouldNotBeNil)
+
+				So(tempAuth.RevokeSelf(), ShouldBeNil)
+			})
+
+			Convey("Token clear self", func() {
+				tempAuth.Clear()
+				So(tempAuth, ShouldResemble, &AuthInfo{})
+			})
+
+			Convey("Accessor should be lookup-able", func() {
+				resp, err := rootAuth.LookupTokenByAccessor(resp.Auth.Accessor + "," + resp.Auth.Accessor)
+				So(err, ShouldBeNil)
+				So(len(resp), ShouldEqual, 2)
+			})
+
+			Convey("Token should be deleteable via accessor", func() {
+				So(rootAuth.RevokeTokenByAccessor(resp.Auth.Accessor), ShouldBeNil)
+
+				_, err := tempAuth.LookupSelf()
+				So(err, ShouldNotBeNil)
+
+				_, err = tempAuth.RenewSelf()
+				So(err, ShouldNotBeNil)
+			})
 		})
 
-		Convey("Token should be able to clear self", func() {
-			tempAuth := &AuthInfo{ID: resp.Auth.ClientToken, Type: "token"}
-			tempAuth.Clear()
-			So(tempAuth, ShouldResemble, &AuthInfo{})
+		// mounts
+		Convey("Mount operations", func() {
+			resp, err := rootAuth.ListMounts()
+			So(err, ShouldBeNil)
+			So(resp, ShouldContainKey, "transit/")
+
+			settings, err := rootAuth.GetMount("secret")
+			So(err, ShouldBeNil)
+			So(settings, ShouldNotBeNil)
+
+			// writing a mount's settings again will actually trigger a proper vault write
+			So(rootAuth.TuneMount("secret", api.MountConfigInput{
+				DefaultLeaseTTL: "",
+				MaxLeaseTTL:     "",
+			}), ShouldBeNil)
 		})
 
-		Convey("Token should be able to revoke self", func() {
-			tempAuth := &AuthInfo{ID: resp.Auth.ClientToken, Type: "token"}
-			So(tempAuth.RevokeSelf(), ShouldBeNil)
+		// helper functions
+		Convey("Helper functions should not return errors if vault is healthy", func() {
+			// state checks
+			_, err = VaultHealth()
+			So(err, ShouldBeNil)
+			_, err = GenerateRootStatus()
+			So(err, ShouldBeNil)
+
+			// generating a new root token
+			randomBytes, err := uuid.GenerateRandomBytes(16)
+			So(err, ShouldBeNil)
+			otp := base64.StdEncoding.EncodeToString(randomBytes)
+			status, err := GenerateRootInit(otp)
+			So(err, ShouldBeNil)
+			So(status.Progress, ShouldEqual, 0)
+
+			// supplying a fake unseal key
+			status, err = GenerateRootUpdate("YWJjZGVmZ2hpamtsbW5vcHFyc3Q=", status.Nonce)
+			So(err, ShouldBeNil)
+			So(status.Progress, ShouldEqual, 1)
+
+			// cancelling unseal process
+			So(GenerateRootCancel(), ShouldBeNil)
+
+			// cubbyhole operations
+			_, err = WriteToCubbyhole("testsecret", map[string]interface{}{
+				"key": "value",
+			})
+			So(err, ShouldBeNil)
+
+			resp, err := ReadFromCubbyhole("testsecret")
+			So(err, ShouldBeNil)
+			So(resp.Data["key"].(string), ShouldEqual, "value")
+
+			_, err = DeleteFromCubbyhole("testsecret")
+			So(err, ShouldBeNil)
+
+			// server operations
+			So(renewServerToken(), ShouldBeNil)
+
+			wrap, err := WrapData("300s", map[string]interface{}{
+				"key": "value",
+			})
+			So(err, ShouldBeNil)
+			So(len(wrap), ShouldEqual, 36)
+
+			wrappedData, err := UnwrapData(wrap)
+			So(err, ShouldBeNil)
+			So(wrappedData["key"].(string), ShouldEqual, "value")
 		})
 
-		Convey("Token should be able to lookup self", func() {
-			tempAuth := &AuthInfo{ID: resp.Auth.ClientToken, Type: "token"}
-			_, err := tempAuth.LookupSelf()
+		// transit
+		Convey("Transit functionality should work", func() {
+			cipher, err := rootAuth.EncryptTransit("usertransit", "value")
+			So(err, ShouldBeNil)
+
+			plaintext, err := rootAuth.DecryptTransit("usertransit", cipher)
+			So(err, ShouldBeNil)
+			So(plaintext, ShouldEqual, "value")
+		})
+
+		// policies
+		Convey("Policy wrappers should work", func() {
+			policies, err := rootAuth.ListPolicies()
+			So(err, ShouldBeNil)
+			So(policies, ShouldContain, "goldfish")
+
+			details, err := rootAuth.GetPolicy("goldfish")
+			So(err, ShouldBeNil)
+			So(details, ShouldNotBeBlank)
+
+			So(rootAuth.PutPolicy("testpolicy", "# this is an empty policy"), ShouldBeNil)
+
+			So(rootAuth.DeletePolicy("testpolicy"), ShouldBeNil)
+
+			details, err = rootAuth.GetPolicy("testpolicy")
+			So(err, ShouldBeNil)
+			So(details, ShouldEqual, "")
+		})
+
+		// users
+		Convey("Listing users of all types should work", func() {
+			// there should be only one user created in PrepareVault()
+			_, err = rootAuth.ListUserpassUsers()
+			So(err, ShouldBeNil)
+
+			_, err = rootAuth.DeleteRaw("auth/userpass/users/testuser")
+			So(err, ShouldBeNil)
+
+			// there should be only one approle (goldfish)
+			roles, err := rootAuth.ListApproleRoles()
+			So(err, ShouldBeNil)
+			So(len(roles), ShouldEqual, 1)
+
+			_, err = rootAuth.DeleteRaw("auth/approle/role/goldfish")
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Token should be able to renew self", func() {
-			tempAuth := &AuthInfo{ID: resp.Auth.ClientToken, Type: "token"}
-			_, err := tempAuth.RenewSelf()
+		// roles
+		Convey("Listing token roles should work", func() {
+			resp, err := rootAuth.ListRoles()
+			So(err, ShouldBeNil)
+			So(len(resp.([]interface{})), ShouldEqual, 1)
+
+			resp, err = rootAuth.GetRole("testrole")
+			So(err, ShouldBeNil)
+		})
+
+		// logging in
+		Convey("Logging in with different methods", func() {
+			resp, err := rootAuth.Login()
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+
+			resp, err = (&AuthInfo{ID: "not_a_token", Type: "token"}).Login()
 			So(err, ShouldNotBeNil)
-		})
+			So(resp, ShouldBeNil)
 
-		Convey("Token should be deleteable via accessor", func() {
-			So(rootAuth.DeleteUser("token", resp.Auth.Accessor), ShouldBeNil)
-			tempAuth := &AuthInfo{ID: resp.Auth.ClientToken, Type: "token"}
-			_, err := tempAuth.LookupSelf()
+			resp, err = (&AuthInfo{ID: "fish1", Pass: "golden", Type: "userpass"}).Login()
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+
+			resp, err = (&AuthInfo{ID: "fish1", Pass: "notgolden", Type: "userpass"}).Login()
 			So(err, ShouldNotBeNil)
-			_, err = tempAuth.RenewSelf()
+			So(resp, ShouldBeNil)
+
+			resp, err = (&AuthInfo{ID: "tesla", Pass: "password", Type: "ldap"}).Login()
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+
+			resp, err = (&AuthInfo{ID: "tesla", Pass: "notpassword", Type: "ldap"}).Login()
 			So(err, ShouldNotBeNil)
+			So(resp, ShouldBeNil)
 		})
-	})
 
-	// mounts
-	Convey("Mount operations", func() {
-		resp, err := rootAuth.ListMounts()
-		So(err, ShouldBeNil)
-		So(len(resp), ShouldEqual, 4) // transit, secret, sys, cubbyhole
+		// ldap
+		Convey("Listing LDAP groups and users", func() {
+			resp, err := rootAuth.ListLDAPGroups()
+			So(err, ShouldBeNil)
+			So(resp, ShouldResemble, []LDAPGroup{
+				LDAPGroup{
+					Name:     "engineers",
+					Policies: []string{"default", "foobar"},
+				},
+				LDAPGroup{
+					Name:     "scientists",
+					Policies: []string{"bar", "default", "foo"},
+				},
+			})
 
-		settings, err := rootAuth.GetMount("secret")
-		So(err, ShouldBeNil)
-		So(settings, ShouldNotBeNil)
-
-		// writing a mount's settings again will actually trigger a proper vault write
-		So(rootAuth.TuneMount("secret", api.MountConfigInput{
-			DefaultLeaseTTL: "",
-			MaxLeaseTTL:     "",
-		}), ShouldBeNil)
-	})
-
-	// helper functions
-	Convey("Helper functions should not return errors if vault is healthy", func() {
-		// state checks
-		_, err = VaultHealth()
-		So(err, ShouldBeNil)
-		_, err = GenerateRootStatus()
-		So(err, ShouldBeNil)
-
-		// generating a new root token
-		otp := base64.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(16))
-		status, err := GenerateRootInit(otp)
-		So(err, ShouldBeNil)
-		So(status.Progress, ShouldEqual, 0)
-
-		// supplying a fake unseal token
-		status, err = GenerateRootUpdate("YWJjZGVmZ2hpamtsbW5vcHFyc3Q=", status.Nonce)
-		So(err, ShouldBeNil)
-		So(status.Progress, ShouldEqual, 1)
-
-		// cancelling unseal process
-		So(GenerateRootCancel(), ShouldBeNil)
-
-		// cubbyhole operations
-		_, err = WriteToCubbyhole("testsecret", map[string]interface{}{
-			"key": "value",
+			resp2, err := rootAuth.ListLDAPUsers()
+			So(err, ShouldBeNil)
+			So(resp2, ShouldResemble, []LDAPUser{
+				LDAPUser{
+					Name:     "tesla",
+					Policies: []string{"default", "zoobar"},
+					Groups:   []string{"engineers"},
+				},
+			})
 		})
-		So(err, ShouldBeNil)
 
-		resp, err := ReadFromCubbyhole("testsecret")
-		So(err, ShouldBeNil)
-		So(resp.Data["key"].(string), ShouldEqual, "value")
-
-		_, err = DeleteFromCubbyhole("testsecret")
-		So(err, ShouldBeNil)
-
-		// server operations
-		So(renewServerToken(), ShouldBeNil)
-
-		wrap, err := WrapData("300s", map[string]interface{}{
-			"key": "value",
-		})
-		So(err, ShouldBeNil)
-		So(len(wrap), ShouldEqual, 36)
-
-		wrappedData, err := UnwrapData(wrap)
-		So(err, ShouldBeNil)
-		So(wrappedData["key"].(string), ShouldEqual, "value")
-	})
-
-	// transit
-	Convey("Transit functionality should work", func() {
-		cipher, err := rootAuth.EncryptTransit("value")
-		So(err, ShouldBeNil)
-
-		plaintext, err := rootAuth.DecryptTransit(cipher)
-		So(err, ShouldBeNil)
-		So(plaintext, ShouldEqual, "value")
-	})
-
-	// policies
-	Convey("Policy wrappers should work", func() {
-		policies, err := rootAuth.ListPolicies()
-		So(err, ShouldBeNil)
-		So(policies, ShouldContain, "goldfish")
-
-		details, err := rootAuth.GetPolicy("goldfish")
-		So(err, ShouldBeNil)
-		So(details, ShouldNotBeBlank)
-
-		So(rootAuth.PutPolicy("testpolicy", "# this is an empty policy"), ShouldBeNil)
-
-		So(rootAuth.DeletePolicy("testpolicy"), ShouldBeNil)
-	})
-
-})) // end prepared vault convey
+	}) // end prepared vault convey
 
 } // end test function

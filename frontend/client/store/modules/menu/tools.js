@@ -16,6 +16,16 @@ export default {
       name: 'Token Creator',
       path: '/create-token',
       component: lazyLoading('tools/CreateToken')
+    },
+    {
+      name: 'Wrapper',
+      path: '/wrapper',
+      component: lazyLoading('tools/Wrapper')
+    },
+    {
+      name: 'Dependencies',
+      path: '/dependencies',
+      component: lazyLoading('tools/Dependencies')
     }
   ]
 }

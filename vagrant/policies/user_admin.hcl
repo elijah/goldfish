@@ -6,13 +6,35 @@ path "auth/token/accessors/" {
 	capabilities = ["list", "sudo"]
 }
 path "auth/token/lookup-accessor*" {
-	capabilities = ["update", "sudo"]
+	capabilities = ["read", "update"]
+}
+
+# allows user to list roles and read role details
+path "/auth/token/roles/" {
+	capabilities = ["list"]
+}
+path "/auth/token/roles/*" {
+	capabilities = ["read"]
+}
+
+# allows user to list ldap groups, users, and their details
+path "/auth/ldap/groups/" {
+	capabilities = ["list"]
+}
+path "/auth/ldap/groups/*" {
+	capabilities = ["read"]
+}
+path "/auth/ldap/users/" {
+	capabilities = ["list"]
+}
+path "/auth/ldap/users/*" {
+	capabilities = ["read"]
 }
 
 # # allows user to delete tokens
 # # disabled for the demo environment
 # path "auth/token/revoke-accessor" {
-# 	capabilities = ["update"]
+#	capabilities = ["update"]
 # }
 
 # allows user to list users and their details

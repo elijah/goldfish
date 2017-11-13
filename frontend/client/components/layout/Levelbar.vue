@@ -1,38 +1,30 @@
 <template>
-  <nav class="level app-levelbar">
+  <nav class="level">
     <div class="level-left">
       <div class="level-item">
         <h3 class="subtitle is-5">
           <strong>{{ name }}</strong>
         </h3>
       </div>
-      <div class="level-item" v-if="!!codelink">
-        <tooltip label="View code" placement="right" size="small" :rounded="true">
-          <span class="icon">
-            <a  :href="codelink">
-              <i class="fa fa-github"></i>
-            </a>
-          </span>
-        </tooltip>
-      </div>
     </div>
 
     <div class="level-right is-hidden-mobile">
-      <breadcrumb :list="list"></breadcrumb>
+      <div class="level-item">
+        <nav class="breadcrumb is-right">
+          <ul>
+            <li v-for="(item, index) in list" v-bind:class="{ 'is-active': (index + 1 === list.length) }">
+              <router-link :to="item.path">{{item.name}}</router-link>
+            </li>
+          </ul>
+        </nav>
+      </div>
     </div>
+
   </nav>
 </template>
 
 <script>
-import Breadcrumb from 'vue-bulma-breadcrumb'
-import Tooltip from 'vue-bulma-tooltip'
-
 export default {
-  components: {
-    Breadcrumb,
-    Tooltip
-  },
-
   data () {
     return {
       list: null
@@ -44,13 +36,6 @@ export default {
   },
 
   computed: {
-    codelink () {
-      if (this.$route.meta && this.$route.meta.link) {
-        return 'https://github.com/vue-bulma/vue-admin/blob/master/client/views/' + this.$route.meta.link
-      } else {
-        return null
-      }
-    },
     name () {
       return this.$route.name
     }

@@ -2,25 +2,16 @@ package vault
 
 import (
 	"errors"
-	"io/ioutil"
-	"net/http"
 
 	"github.com/hashicorp/vault/api"
 )
 
-func VaultHealth() (string, error) {
-	resp, err := http.Get(VaultAddress + "/v1/sys/health")
+func VaultHealth() (*api.HealthResponse, error) {
+	client, err := NewVaultClient()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return "", err
-	}
-
-	return string(body), nil
+	return client.Sys().Health()
 }
 
 // lookup current root generation status
@@ -57,48 +48,34 @@ func GenerateRootCancel() error {
 }
 
 func WriteToCubbyhole(name string, data map[string]interface{}) (interface{}, error) {
-	client, err := NewVaultClient()
+	client, err := NewGoldfishVaultClient()
 	if err != nil {
 		return nil, err
 	}
-	client.SetToken(vaultToken)
-	return vaultClient.Logical().Write("cubbyhole/" + name, data)
+	return client.Logical().Write("cubbyhole/"+name, data)
 }
 
 func ReadFromCubbyhole(name string) (*api.Secret, error) {
-	client, err := NewVaultClient()
+	client, err := NewGoldfishVaultClient()
 	if err != nil {
 		return nil, err
 	}
-	client.SetToken(vaultToken)
-	return vaultClient.Logical().Read("cubbyhole/" + name)
+	return client.Logical().Read("cubbyhole/" + name)
 }
 
 func DeleteFromCubbyhole(name string) (*api.Secret, error) {
-	client, err := NewVaultClient()
+	client, err := NewGoldfishVaultClient()
 	if err != nil {
 		return nil, err
 	}
-	client.SetToken(vaultToken)
-	return vaultClient.Logical().Delete("cubbyhole/" + name)
-}
-
-func renewServerToken() (err error) {
-	client, err := NewVaultClient()
-	if err != nil {
-		return err
-	}
-	client.SetToken(vaultToken)
-	_, err = client.Auth().Token().RenewSelf(0)
-	return
+	return client.Logical().Delete("cubbyhole/" + name)
 }
 
 func WrapData(wrapttl string, data map[string]interface{}) (string, error) {
-	client, err := NewVaultClient()
+	client, err := NewGoldfishVaultClient()
 	if err != nil {
 		return "", err
 	}
-	client.SetToken(vaultToken)
 
 	client.SetWrappingLookupFunc(func(operation, path string) string {
 		return wrapttl
@@ -112,17 +89,28 @@ func WrapData(wrapttl string, data map[string]interface{}) (string, error) {
 }
 
 func UnwrapData(wrappingToken string) (map[string]interface{}, error) {
-	// set up vault client
-	client, err := NewVaultClient()
+	client, err := NewGoldfishVaultClient()
 	if err != nil {
 		return nil, err
 	}
-	client.SetToken(wrappingToken)
 
 	// make a raw unwrap call. This will use the token as a header
-	resp, err := client.Logical().Unwrap("")
+	resp, err := client.Logical().Unwrap(wrappingToken)
 	if err != nil {
 		return nil, errors.New("Failed to unwrap provided token, revoke it if possible\nReason:" + err.Error())
+	}
+	return resp.Data, nil
+}
+
+func LookupSelf() (map[string]interface{}, error) {
+	client, err := NewGoldfishVaultClient()
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Logical().Read("/auth/token/lookup-self")
+	if err != nil {
+		return nil, err
 	}
 	return resp.Data, nil
 }

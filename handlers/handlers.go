@@ -1,72 +1,37 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
 
 	"github.com/caiyeon/goldfish/vault"
-	"github.com/gorilla/csrf"
-	"github.com/gorilla/securecookie"
 	"github.com/labstack/echo"
 )
 
 // for returning JSON bodies
 type H map[string]interface{}
 
-// for storing ciphers of user credentials
-var scookie = &securecookie.SecureCookie{}
-
-func init() {
-	// setup cookie encryption keys
-	hashKey := securecookie.GenerateRandomKey(64)
-	blockKey := securecookie.GenerateRandomKey(32)
-	if hashKey == nil || blockKey == nil {
-		panic("Failed to generate random hashkey")
-	}
-	scookie = securecookie.New(hashKey, blockKey)
-	scookie = scookie.MaxAge(14400) // 8 hours
-	if scookie == nil {
-		panic("Failed to initialize gorilla/securecookie")
-	}
-}
-
-// deprecated. Will be removed soon
-func logError(c echo.Context, logstring string, responsestring string) error {
-	log.Println("[ERROR]:", logstring)
-	return c.JSON(http.StatusInternalServerError, H{
-		"error": responsestring,
-	})
-}
-
 // returns the http status code found in the error message
 func parseError(c echo.Context, err error) error {
+	// if error came from vault, relay it
 	errCode := strings.Split(err.Error(), "Code:")
 	errMsgs := strings.Split(err.Error(), "*")
-
-	// if error string did not contain error response code
-	if len(errCode) < 2 || len(errMsgs) < 2 {
-		log.Println("[ERROR]: ", err.Error())
-		return c.JSON(http.StatusInternalServerError, H{
-			"error": "Invalid vault response",
+	if len(errCode) > 1 && len(errMsgs) > 1 {
+		code := 500
+		fmt.Sscanf(errCode[1], "%d", &code)
+		return c.JSON(code, H{
+			"error": "Vault: " + errMsgs[1],
 		})
 	}
 
-	code := 500
-	fmt.Sscanf(errCode[1], "%d", &code)
-	return c.JSON(code, H{
-		"error": "Vault: " + errMsgs[1],
+	// if error came from goldfish
+	log.Println("[ERROR]: ", err.Error())
+	return c.JSON(http.StatusInternalServerError, H{
+		"error": err.Error(),
 	})
-}
-
-func FetchCSRF() echo.HandlerFunc {
-	return func(c echo.Context) error {
-		c.Response().Writer.Header().Set("X-CSRF-Token", csrf.Token(c.Request()))
-		return c.JSON(http.StatusOK, H{
-			"status": "fetched",
-		})
-	}
 }
 
 func VaultHealth() echo.HandlerFunc {
@@ -76,13 +41,85 @@ func VaultHealth() echo.HandlerFunc {
 			return parseError(c, err)
 		}
 		return c.JSON(http.StatusOK, H{
-			"result": string(resp),
+			"result": resp,
+		})
+	}
+}
+
+func Health() echo.HandlerFunc {
+	return func(c echo.Context) error {
+		bootstrapped := vault.Bootstrapped()
+
+		deployment_time_utc := ""
+		if bootstrapped {
+			// check server token
+			resp, err := vault.LookupSelf()
+			if err != nil {
+				return parseError(c, err)
+			}
+			deployment_time_utc = string(resp["creation_time"].(json.Number))
+		}
+
+		// check transit encryption config
+		transitEnabled := vault.GetConfig().ServerTransitKey != ""
+
+		return c.JSON(http.StatusOK, H{
+			"bootstrapped":        bootstrapped,
+			"deployment_time_utc": deployment_time_utc,
+			"transit_encryption":  transitEnabled,
+		})
+	}
+}
+
+func Bootstrap() echo.HandlerFunc {
+	// scoped struct is fine, nothing else needs to know this
+	type wrapstruct struct {
+		Wrapping_token string
+	}
+
+	return func(c echo.Context) error {
+		// re-bootstrapping may come in the future, but isn't supported for now
+		if vault.Bootstrapped() {
+			return c.JSON(http.StatusBadRequest, H{
+				"error": "Already bootstrapped",
+			})
+		}
+
+		// bind body
+		wrap := new(wrapstruct)
+		if err := c.Bind(wrap); err != nil {
+			return c.JSON(http.StatusBadRequest, H{
+				"error": "Invalid format",
+			})
+		}
+		if wrap.Wrapping_token == "" {
+			return c.JSON(http.StatusBadRequest, H{
+				"error": "Empty wrapping token",
+			})
+		}
+
+		if err := vault.Bootstrap(wrap.Wrapping_token); err != nil {
+			return c.JSON(http.StatusInternalServerError, H{
+				"error": err.Error(),
+			})
+		}
+
+		return c.JSON(http.StatusOK, H{
+			"result": "success",
 		})
 	}
 }
 
 func Login() echo.HandlerFunc {
 	return func(c echo.Context) error {
+		// if vault wrapper is not initialized, errors for everyone!
+		if !vault.Bootstrapped() {
+			c.JSON(http.StatusForbidden, H{
+				"error": "Goldfish is not initialized!",
+			})
+			return nil
+		}
+
 		auth := new(vault.AuthInfo)
 		defer auth.Clear()
 
@@ -104,31 +141,21 @@ func Login() echo.HandlerFunc {
 			return parseError(c, err)
 		}
 
-		// encrypt auth.ID with vault's transit backend
-		if err := auth.EncryptAuth(); err != nil {
-			return c.JSON(http.StatusInternalServerError, H{
-				"error": "Goldfish could not use transit key",
-			})
-		}
-
-		// store auth.Type and auth.ID (now a cipher) in cookie
-		if encoded, err := scookie.Encode("auth", auth); err == nil {
-			cookie := &http.Cookie{
-				Name:  "auth",
-				Value: encoded,
-				Path:  "/",
+		// if goldfish is configured to use transit encryption
+		if conf := vault.GetConfig(); conf.ServerTransitKey != "" {
+			// encrypt auth.ID with vault's transit backend
+			if err := auth.EncryptAuth(); err != nil {
+				return c.JSON(http.StatusInternalServerError, H{
+					"error": "Goldfish could not use transit key: " + err.Error(),
+				})
 			}
-			http.SetCookie(c.Response().Writer, cookie)
-		} else {
-			return c.JSON(http.StatusInternalServerError, H{
-				"error": "Goldfish could not encode cookie",
-			})
 		}
 
 		// return useful information to user
 		return c.JSON(http.StatusOK, H{
 			"status": "Logged in",
-			"data": map[string]interface{}{
+			"result": map[string]interface{}{
+				"cipher":       auth.ID,
 				"display_name": data["display_name"],
 				"id":           data["id"],
 				"meta":         data["meta"],
@@ -142,18 +169,12 @@ func Login() echo.HandlerFunc {
 
 func RenewSelf() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		var auth = &vault.AuthInfo{}
+		// fetch auth from header or cookie
+		auth := getSession(c)
+		if auth == nil {
+			return nil
+		}
 		defer auth.Clear()
-
-		// fetch auth from cookie
-		if err := getSession(c, auth); err != nil {
-			return c.JSON(http.StatusForbidden, H{
-				"error": "Please login first",
-			})
-		}
-		if err := auth.DecryptAuth(); err != nil {
-			return parseError(c, err)
-		}
 
 		// verify auth details and create client access token
 		resp, err := auth.RenewSelf()
@@ -162,7 +183,7 @@ func RenewSelf() echo.HandlerFunc {
 		}
 
 		return c.JSON(http.StatusOK, H{
-			"data": map[string]interface{}{
+			"result": map[string]interface{}{
 				"meta":     resp.Auth.Metadata,
 				"policies": resp.Auth.Policies,
 				"ttl":      resp.Auth.LeaseDuration,
@@ -171,11 +192,37 @@ func RenewSelf() echo.HandlerFunc {
 	}
 }
 
-func getSession(c echo.Context, auth *vault.AuthInfo) error {
-	// fetch auth from cookie
-	cookie, err := c.Request().Cookie("auth")
-	if err != nil {
-		return err
+// constructs raw or decrypted authentication info
+func getSession(c echo.Context) *vault.AuthInfo {
+	// if vault wrapper is not initialized, errors for everyone!
+	if !vault.Bootstrapped() {
+		c.JSON(http.StatusForbidden, H{
+			"error": "Goldfish is not initialized!",
+		})
+		return nil
 	}
-	return scookie.Decode("auth", cookie.Value, &auth)
+
+	var auth = &vault.AuthInfo{
+		Type: "token",
+	}
+
+	// check headers first
+	if auth.ID = c.Request().Header.Get("X-Vault-Token"); auth.ID == "" {
+		c.JSON(http.StatusForbidden, H{
+			"error": "Please login first",
+		})
+		return nil
+	}
+
+	// if header is transit encrypted, decrypt first
+	if strings.HasPrefix(auth.ID, "vault:") {
+		if err := auth.DecryptAuth(); err != nil {
+			c.JSON(http.StatusForbidden, H{
+				"error": "Cipher invalid. Please logout and login again",
+			})
+			return nil
+		}
+	}
+
+	return auth
 }

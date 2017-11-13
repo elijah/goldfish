@@ -14,10 +14,7 @@ Restart=on-failure
 User=root
 Group=root
 
-ExecStartPre=/usr/local/go/bin/go install github.com/caiyeon/goldfish
-ExecStart=/bin/bash -c '/home/vagrant/go/bin/goldfish -dev -vault_token=\$(\
-/usr/bin/vault write -address=http://127.0.0.1:8200 -f -wrap-ttl=20m -format=json auth/approle/role/goldfish/secret-id | \
-/usr/bin/jq -r .wrap_info.token)'
+ExecStart=/usr/local/go/bin/go run /home/vagrant/go/src/github.com/caiyeon/goldfish/server.go -dev
 
 ExecReload=/bin/kill -s=SIGHUP $MAINPID
 KillSignal=SIGTERM
@@ -30,12 +27,12 @@ systemctl daemon-reload
 systemctl start goldfish
 
 
-
 # Required modules
 echo 'Installing nodejs and npm...'
 sudo apt-get purge -y nodejs npm
-curl -sL https://deb.nodesource.com/setup_7.x | sudo -E bash -
+curl -sL https://deb.nodesource.com/setup_6.x | sudo -E bash -
 sudo apt-get install -y nodejs
+sudo npm install npm@5 -g
 echo Nodejs version:
 nodejs -v
 echo NPM version:
@@ -58,7 +55,6 @@ Restart=on-failure
 User=root
 Group=root
 WorkingDirectory=/home/vagrant/go/src/github.com/caiyeon/goldfish/frontend
-ExecStartPre=/usr/bin/npm update
 ExecStart=/usr/bin/npm run dev
 ExecReload=/bin/kill -s=SIGHUP \$MAINPID
 KillSignal=SIGTERM

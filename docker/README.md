@@ -1,41 +1,29 @@
-# Warning
+# Running with docker-compose
 
-This docker image is under construction. Below are manual steps to run a vault and a goldfish container side by side in the same network.
+Quickly start up a Vault and Goldfish stack using [docker-compose](https://github.com/docker/compose). This is meant as a template for deploying to different orchestration environments for production use.
 
-If you have docker experience, a pull request with a docker stack or docker compose would be greatly appreciated.
+This is similar to a [production deployment](https://github.com/Caiyeon/goldfish/wiki/Production-Deployment).
 
+To launch:
 ```bash
-# Make a network
-docker network create goldfishnetwork
-
-# Run a dev instance of vault
-docker run --name vault --net goldfishnetwork -p 127.0.0.1:8200:8200 --cap-add=IPC_LOCK \
--e 'VAULT_DEV_ROOT_TOKEN_ID=goldfish' vault:0.7.0 &
-
-# Supply vault with necessary data
-# Assuming vault client is installed on host machine
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=goldfish
-vault policy-write goldfish $GOPATH/src/github.com/caiyeon/goldfish/vagrant/policies/goldfish.hcl
-
-vault mount transit
-vault write -f transit/keys/goldfish
-
-vault auth-enable approle
-vault write auth/approle/role/goldfish role_name=goldfish secret_id_ttl=5m \
-token_ttl=480h token_max_ttl=720h secret_id_num_uses=1 policies=default,goldfish
-vault write auth/approle/role/goldfish/role-id role_id=goldfish
-
-# On another terminal, build goldfish docker image
-docker build -t goldfish $GOPATH/src/github.com/caiyeon/goldfish/docker
-
-# Generate a wrapped token from approle for goldfish to start with
-WRAPPED_TOKEN=$(vault write -f -wrap-ttl=20m -format=json \
-auth/approle/role/goldfish/secret-id | jq -r .wrap_info.token)
-
-# Start goldfish image in a container in the same network
-docker run --name goldfish --net goldfishnetwork -p 8000:8000 \
--e "VAULT_ADDR=http://vault:8200" \
--e "VAULT_TOKEN=$WRAPPED_TOKEN" \
-goldfish
+docker-compose up
 ```
+
+Go to http://localhost:8000 in a browser and log in with token `goldfish`
+
+## Dockerfile.compose
+Builds a container to run the Goldfish, designed to run within a docker-compose stack.
+
+- Downloads versioned binary from [Goldfish Github releases](https://github.com/Caiyeon/goldfish/releases) (`GOLDFISH_VERSION` variable)
+- Exposes port 8000
+- Starts Goldfish with the the config file `docker.hcl` and `VAULT_DEV_ROOT_TOKEN_ID=goldfish`
+
+## Using docker-compose
+Use [docker-compose](https://github.com/docker/compose) to deploy a stack locally.
+
+Stack details:
+- [Official Vault container](https://hub.docker.com/_/vault/) setting default `VAULT_DEV_ROOT_TOKEN_ID=goldfish`
+- Goldfish [Goldfish release](https://github.com/Caiyeon/goldfish/releases) set in `Dockefile.compose`
+- Runs with `entrypoint.sh` to configure Vault for Goldfish
+  - Runs [production deployment](https://github.com/Caiyeon/goldfish/wiki/Production-Deployment) commands and configures [Goldfish Policy](https://github.com/Caiyeon/goldfish/blob/master/vagrant/policies/goldfish.hcl) using the [Vault HTTP API](https://www.vaultproject.io/api/index.html) instead of the `vault` binary.
+- Uses `docker.hcl` for Goldfish configuration

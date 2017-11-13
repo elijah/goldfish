@@ -6,9 +6,36 @@
         <!-- Left side -->
         <article class="tile is-parent is-5 is-vertical">
 
+          <!-- Bootstrap tile -->
+          <article v-if="goldfishHealthData && goldfishHealthData['bootstrapped'] === false"
+            class="tile is-child is-marginless is-paddingless">
+            <h2 class="title is-3">Welcome!</h2>
+
+            <div class="box is-parent is-6">
+              <label class="label">Setting up Goldfish</label>
+              <div class="field has-addons">
+                <div class="control">
+                  <input class="input" type="text" v-model="secretID"
+                  placeholder="Insert wrapping token" @keyup.enter="bootstrapGoldfish()">
+                  <p class="help is-info">
+                    vault write -f -wrap-ttl=5m auth/approle/role/goldfish/secret-id
+                  </p>
+                </div>
+                <div class="control">
+                  <button class="button is-info"
+                  v-bind:class="{ 'is-loading': bootstrapLoading }"
+                  :disabled="secretID === ''"
+                  @click="bootstrapGoldfish()">
+                    Swim!
+                  </button>
+                </div>
+              </div>
+            </div>
+          </article>
+
           <!-- Login tile -->
           <article class="tile is-child is-marginless is-paddingless">
-            <h1 class="title">Vault Login</h1>
+            <h2 class="subtitle is-4">Vault Login</h2>
             <div class="box is-parent is-6" @keyup.enter="login">
 
               <div class="field">
@@ -20,6 +47,7 @@
                       <option v-bind:value="'Userpass'">Userpass</option>
                       <option v-bind:value="'Github'">Github</option>
                       <option v-bind:value="'LDAP'">LDAP</option>
+                      <option v-bind:value="'Okta'">Okta</option>
                     </select>
                   </div>
                 </div>
@@ -29,7 +57,7 @@
               <div v-if="type === 'Token'" class="field">
                 <p class="control has-icons-left">
                   <input class="input" type="password" placeholder="Vault Token" v-model="ID">
-                  <span class="icon is-small">
+                  <span class="icon is-small is-left">
                     <i class="fa fa-lock"></i>
                   </span>
                 </p>
@@ -40,15 +68,15 @@
                 <div class="field">
                   <p class="control has-icons-left">
                     <input class="input" type="text" placeholder="Vault Username" v-model="ID">
-                    <span class="icon is-small">
+                    <span class="icon is-small is-left">
                       <i class="fa fa-user-circle-o"></i>
                     </span>
                   </p>
                 </div>
                 <div class="field">
                   <p class="control has-icons-left">
-                    <input class="input" type="password" placeholder="Vault Password" v-model="Password">
-                    <span class="icon is-small">
+                    <input class="input" type="password" placeholder="Vault Password" v-model="password">
+                    <span class="icon is-small is-left">
                       <i class="fa fa-lock"></i>
                     </span>
                   </p>
@@ -59,7 +87,7 @@
               <div v-if="type === 'Github'" class="field">
                 <p class="control has-icons-left">
                   <input class="input" type="password" placeholder="Github Access Token" v-model="ID">
-                  <span class="icon is-small">
+                  <span class="icon is-small is-left">
                     <i class="fa fa-lock"></i>
                   </span>
                 </p>
@@ -70,15 +98,35 @@
                 <div class="field">
                   <p class="control has-icons-left">
                     <input class="input" type="text" placeholder="Username" v-model="ID">
-                    <span class="icon is-small">
+                    <span class="icon is-small is-left">
                       <i class="fa fa-user-circle-o"></i>
                     </span>
                   </p>
                 </div>
                 <div class="field">
                   <p class="control has-icons-left">
-                    <input class="input" type="password" placeholder="Password" v-model="Password">
-                    <span class="icon is-small">
+                    <input class="input" type="password" placeholder="Password" v-model="password">
+                    <span class="icon is-small is-left">
+                      <i class="fa fa-lock"></i>
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <!-- Okta login form -->
+              <div v-if="type === 'Okta'" class="field">
+                <div class="field">
+                  <p class="control has-icons-left">
+                    <input class="input" type="text" placeholder="Username" v-model="ID">
+                    <span class="icon is-small is-left">
+                      <i class="fa fa-user-circle-o"></i>
+                    </span>
+                  </p>
+                </div>
+                <div class="field">
+                  <p class="control has-icons-left">
+                    <input class="input" type="password" placeholder="Password" v-model="password">
+                    <span class="icon is-small is-left">
                       <i class="fa fa-lock"></i>
                     </span>
                   </p>
@@ -98,37 +146,42 @@
 
           <!-- Current session tile -->
           <article class="tile is-child is-marginless is-paddingless">
-            <h1 class="title">Current Session</h1>
+            <h2 class="subtitle is-4">Current Session</h2>
             <div class="box is-parent is-6">
-              <div class="table-responsive">
-                <table class="table is-striped is-narrow">
-                  <thead>
-                    <tr>
-                      <th>Key</th>
-                      <th>Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="key in sessionKeys">
-                      <td>
-                        {{ key }}
-                      </td>
-                      <td>
-                        {{ sessionData[key] }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p v-if="sessionData !== null" class="control">
-                  <button class="button is-warning" @click="logout()">
-                    Logout
-                  </button>
-                  <button v-if="renewable" class="button is-primary"
-                  @click="renewLogin()">
-                    Renew
-                  </button>
-                </p>
-              </div>
+              <table class="table is-fullwidth is-striped is-narrow">
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="key in sessionKeys" v-if="key != 'token'">
+                    <td>
+                      {{ key }}
+                    </td>
+                    <td v-if="key === 'policies'">
+                      <div class="tags">
+                        <span v-for="policy in session['policies']" class="tag is-rounded is-info">
+                          {{policy}}
+                        </span>
+                      </div>
+                    </td>
+                    <td v-else>
+                      {{ session[key] }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-if="session !== null" class="control">
+                <button class="button is-warning" @click="logout()">
+                  Logout
+                </button>
+                <button v-if="renewable" class="button is-primary"
+                @click="renewLogin()">
+                  Renew
+                </button>
+              </p>
             </div>
           </article>
 
@@ -141,41 +194,69 @@
 
           <!-- Vault Health Tile -->
           <article class="tile is-child is-marginless is-paddingless">
-            <h1 class="title">Vault Health</h1>
+            <h2 class="subtitle is-4">Vault Health</h2>
             <div class="box is-parent is-6">
-              <div class="table-responsive">
-                <table class="table is-striped is-narrow">
-                  <thead>
-                    <tr>
-                      <th>Key</th>
-                      <th>Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="key in healthKeys">
-                      <td>
-                        {{ key }}
-                      </td>
-                      <td>
-                        {{ healthData[key] }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p class="control">
-                  <button class="button is-primary"
-                    v-bind:class="{
-                      'is-loading': healthLoading,
-                      'is-disabled': healthLoading
-                    }"
-                    @click="getHealth()">
-                  Refresh
+              <table class="table is-fullwidth is-striped is-narrow">
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="key in Object.keys(vaultHealthData)">
+                    <td>
+                      {{ key }}
+                    </td>
+                    <td>
+                      {{ vaultHealthData[key] }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p class="control">
+                <button class="button is-primary"
+                  v-bind:class="{ 'is-loading': vaultHealthLoading }"
+                  :disabled="vaultHealthLoading"
+                  @click="getVaultHealth()">
+                Refresh
                 </button>
               </p>
-              </div>
             </div>
           </article>
 
+          <!-- Goldfish Health tile -->
+          <article class="tile is-child is-marginless is-paddingless">
+            <h2 class="subtitle is-4">Goldfish Health</h2>
+            <div class="box is-parent is-6">
+              <table class="table is-fullwidth is-striped is-narrow">
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="key in Object.keys(goldfishHealthData)">
+                    <td>
+                      {{ key }}
+                    </td>
+                    <td>
+                      {{ goldfishHealthData[key] }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p class="control">
+                <button class="button is-primary"
+                  v-bind:class="{ 'is-loading': goldfishHealthLoading }"
+                  :disabled="goldfishHealthLoading"
+                  @click="getGoldfishHealth()">
+                Refresh
+                </button>
+              </p>
+            </div>
+          </article>
         <!-- Right side (end) -->
         </article>
 
@@ -186,87 +267,112 @@
 </template>
 
 <script>
+import moment from 'moment'
+
 export default {
   data () {
     return {
-      csrf: '',
       type: 'Token',
       ID: '',
-      Password: '',
-      healthData: {},
-      healthLoading: false,
-      sessionData: null
+      password: '',
+      vaultHealthData: {},
+      vaultHealthLoading: false,
+      goldfishHealthData: {},
+      goldfishHealthLoading: false,
+      secretID: '',
+      bootstrapLoading: false
     }
   },
 
   mounted: function () {
-    // fetch csrf for login post request later
-    this.fetchCSRF()
-    // fetch vault cluster details
-    this.getHealth()
-    // check if user is logged on
-    var raw = window.localStorage.getItem('session')
-    if (raw) {
-      var session = JSON.parse(raw)
-      if (Date.now() > Date.parse(session['cookie_expiry'])) {
-        window.localStorage.removeItem('session')
-        this.$notify({
-          title: 'Session expired',
-          message: 'Please login again',
-          type: 'warning'
-        })
-      } else {
-        this.sessionData = session
-      }
-    }
+    this.getVaultHealth()
+    this.getGoldfishHealth()
   },
 
   computed: {
-    healthKeys: function () {
-      return Object.keys(this.healthData)
-    },
-    sessionKeys: function () {
-      return (this.sessionData === null) || Object.keys(this.sessionData)
+    session: function () {
+      return this.$store.getters.session
     },
     renewable: function () {
-      return (this.sessionData && this.sessionData['renewable'])
+      return (this.session && this.session['renewable'])
+    },
+    sessionKeys: function () {
+      return (this.session === null) || Object.keys(this.session)
     }
   },
 
   methods: {
-    fetchCSRF: function () {
-      this.$http.get('/api/login/csrf')
+    bootstrapGoldfish: function () {
+      this.bootstrapLoading = true
+      this.$http.post('/v1/bootstrap', {
+        wrapping_token: this.secretID
+      })
       .then((response) => {
-        this.csrf = response.headers['x-csrf-token']
+        this.$notify({
+          title: 'Success',
+          message: 'Goldfish successfully bootstrapped!',
+          type: 'success'
+        })
+        this.secretID = ''
+        this.bootstrapLoading = false
+        // reload health so that the bootstrap tile can be toggled off by vue
+        this.getGoldfishHealth()
       })
       .catch((error) => {
+        this.secretID = ''
+        this.bootstrapLoading = false
         this.$onError(error)
       })
     },
 
-    getHealth: function () {
-      this.healthLoading = true
-      this.$http.get('/api/health')
+    getVaultHealth: function () {
+      this.vaultHealthLoading = true
+      this.$http.get('/v1/vaulthealth')
       .then((response) => {
-        this.healthData = JSON.parse(response.data.result)
-        this.healthData['server_time_utc'] = new Date(this.healthData['server_time_utc'] * 1000).toUTCString()
-        this.healthLoading = false
+        this.vaultHealthData = response.data.result
+        this.vaultHealthData['server_time_utc'] = moment.utc(
+          moment.unix(this.vaultHealthData['server_time_utc']))
+          .format('ddd, h:mm:ss A MMMM Do YYYY') + ' GMT'
+        this.vaultHealthLoading = false
       })
       .catch((error) => {
         this.$onError(error)
-        this.healthLoading = false
+        this.vaultHealthLoading = false
+      })
+    },
+
+    getGoldfishHealth: function () {
+      this.goldfishHealthLoading = true
+      this.$http.get('/v1/health')
+      .then((response) => {
+        this.goldfishHealthData = response.data
+        this.goldfishHealthData['deployment_time_utc'] = moment.utc(
+          moment.unix(this.goldfishHealthData['deployment_time_utc']))
+          .format('ddd, h:mm:ss A MMMM Do YYYY') + ' GMT'
+        this.goldfishHealthLoading = false
+      })
+      .catch((error) => {
+        if (error.response.data.error === 'Vault:  permission denied') {
+          this.$notify({
+            title: 'Error',
+            message: 'Goldfish server could not authenticate against vault',
+            type: 'danger'
+          })
+        } else {
+          this.$onError(error)
+        }
+        this.goldfishHealthLoading = false
       })
     },
 
     login: function () {
-      this.$http.post('/api/login', {
+      this.$http.post('/v1/login', {
         Type: this.type.toLowerCase(),
-        ID: this.ID,
-        Password: this.Password
+        id: this.ID,
+        Password: this.password
       }, {
-        headers: {'X-CSRF-Token': this.csrf}
+        headers: {'X-Vault-Token': this.session ? this.session.token : ''}
       })
-
       .then((response) => {
         // notify user, and clear inputs
         this.$notify({
@@ -276,59 +382,68 @@ export default {
         })
         this.clearFormData()
 
-        // set user's session reactively, and store it browser's localStorage
-        this.sessionData = {
+        var newSession = {
+          'token': response.data.result['cipher'],
           'type': this.type,
-          'display_name': response.data.data['display_name'],
-          'meta': response.data.data['meta'],
-          'policies': response.data.data['policies'],
-          'renewable': response.data.data['renewable'],
-          'token_expiry': response.data.data['ttl'] === 0 ? 'never' : new Date(Date.now() + response.data.data['ttl'] * 1000).toString(),
-          'cookie_expiry': new Date(Date.now() + 28800000).toString() // 8 hours from now
+          'display_name': response.data.result['display_name'],
+          'meta': response.data.result['meta'],
+          'policies': response.data.result['policies'],
+          'renewable': response.data.result['renewable'],
+          'token_expiry': response.data.result['ttl'] === 0 ? 'never' : moment().add(response.data.result['ttl'], 'seconds').format('ddd, h:mm:ss A MMMM Do YYYY')
         }
-        window.localStorage.setItem('session', JSON.stringify(this.sessionData))
+
+        // store session data in localstorage and mutate vuex state
+        window.localStorage.setItem('session', JSON.stringify(newSession))
+        this.$store.commit('setSession', newSession)
 
         // notify user of generated client-token
-        if (this.type === 'Userpass' || this.type === 'LDAP') {
+        if (this.type === 'Userpass' || this.type === 'LDAP' || this.type === 'Okta') {
           this.$message({
-            message: 'Your access token is: ' + response.data.data['id'] + ' and this is the only time you will see it. If you wish, you may login with this to avoid creating unnecessary access tokens in the future.',
+            message: 'Your access token is: ' + response.data.result['id'] + ' and this is the only time you will see it. If you wish, you may login with this to avoid creating unnecessary access tokens in the future.',
             type: 'warning',
             duration: 0,
             showCloseButton: true
           })
         }
       })
-
       .catch((error) => {
+        // to avoid ambiguity, current session should be purged when new login fails
+        this.logout()
         this.$onError(error)
       })
     },
 
     logout: function () {
-      document.cookie = 'auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'
-      this.sessionData = null
+      // purge session from localstorage
       window.localStorage.removeItem('session')
+      // mutate vuex state
+      this.$store.commit('clearSession')
     },
 
     clearFormData: function () {
       this.ID = ''
-      this.Password = ''
+      this.password = ''
     },
 
     renewLogin: function () {
-      this.$http.post('/api/login/renew-self', {}, {
-        headers: {'X-CSRF-Token': this.csrf}
+      this.$http.post('/v1/login/renew-self', {}, {
+        headers: {'X-Vault-Token': this.session ? this.session.token : ''}
       })
       .then((response) => {
+        // deep copy session, update fields, and mutate state
+        let newSession = JSON.parse(JSON.stringify(this.session))
+
+        newSession['meta'] = response.data.result['meta']
+        newSession['policies'] = response.data.result['policies']
+        newSession['token_expiry'] = response.data.result['ttl'] === 0 ? 'never' : moment().add(response.data.result['ttl'], 'seconds').format('ddd, h:mm:ss A MMMM Do YYYY')
+
+        window.localStorage.setItem('session', JSON.stringify(newSession))
+        this.$store.commit('setSession', newSession)
         this.$notify({
           title: 'Renew success!',
           message: '',
           type: 'success'
         })
-        this.sessionData['meta'] = response.data.data['meta']
-        this.sessionData['policies'] = response.data.data['policies']
-        this.sessionData['token_expiry'] = response.data.data['ttl'] === 0 ? 'never' : new Date(Date.now() + response.data.data['ttl'] * 1000).toString()
-        window.localStorage.setItem('session', JSON.stringify(this.sessionData))
       })
       .catch((error) => {
         this.$onError(error)

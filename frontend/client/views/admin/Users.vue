@@ -8,15 +8,31 @@
           <!-- Tab navigation -->
           <div class="tabs is-medium is-boxed is-fullwidth">
             <ul>
-              <li v-bind:class="tabName === 'token' ? 'is-active' : ''" v-on:click="switchTab(0)"><a>Tokens</a></li>
-              <li v-bind:class="tabName === 'userpass' ? 'is-active' : ''" v-on:click="switchTab(1)"><a>Userpass</a></li>
-              <li v-bind:class="tabName === 'approle' ? 'is-active' : ''" v-on:click="switchTab(2)"><a>Approle</a></li>
-              <li disabled><a>Certificates</a></li>
+              <li v-bind:class="tabName === 'token' ? 'is-active' : ''"
+                v-on:click="switchTab(0, false)"
+                disabled>
+                <a>Tokens</a>
+              </li>
+              <li v-bind:class="tabName === 'userpass' ? 'is-active' : ''"
+                v-on:click="switchTab(1, true)"
+                :disabled="loading">
+                <a>Userpass</a>
+              </li>
+              <li v-bind:class="tabName === 'approle' ? 'is-active' : ''"
+                v-on:click="switchTab(2, true)"
+                :disabled="loading">
+                <a>Approle</a>
+              </li>
+              <li v-bind:class="tabName === 'ldap' ? 'is-active' : ''"
+                v-on:click="switchTab(3, true)"
+                :disabled="loading">
+                <a>LDAP</a>
+              </li>
             </ul>
           </div>
 
           <!-- Tokens tab -->
-          <div v-if="tabName === 'token'" class="tile is-parent table-responsive is-vertical">
+          <div v-if="tabName === 'token'" class="tile is-parent is-vertical">
 
             <!-- Token pages -->
             <nav class="pagination is-right">
@@ -93,7 +109,7 @@
                     Found <strong>{{ search.found }}</strong> matches out of <strong>{{ search.searched }}</strong> tokens
                   </p>
                   <p v-else class="subtitle is-5">
-                    Displaying <strong>{{Math.min(tokenCount, 300)}}</strong> out of <strong>{{tokenCount}}</strong> tokens
+                    Displaying <strong>{{Math.min(tableData.length, 300)}}</strong> out of <strong>{{accessors.length}}</strong> tokens
                   </p>
                 </div>
 
@@ -101,7 +117,7 @@
                 <div class="level-right">
                   <div class="level-item">
                     <div class="field has-addons">
-                      <p class="control">
+                      <p class="control has-icons-right">
                         <span class="select">
                           <select v-model="search.regex">
                           <option v-bind:value="false">Substring</option>
@@ -134,7 +150,7 @@
             <label class="label"></label>
 
             <!-- Tokens table -->
-            <table class="table is-striped is-narrow">
+            <table class="table is-fullwidth is-striped is-narrow">
               <thead>
                 <tr>
                   <th></th>
@@ -156,9 +172,6 @@
                   <td v-if="entry" v-for="key in tableColumns">
                     {{ entry[key] }}
                   </td>
-                  <td v-else>
-                    ERROR: An invalid token-accessor has been found
-                  </td>
                   <td width="34">
                   <span class="icon">
                     <a @click="openDeleteModal(index)">
@@ -169,11 +182,17 @@
                 </tr>
               </tbody>
             </table>
+
+            <a v-if="tableData.length === 0" class="pagination-next"
+              v-on:click="switchTab(0, true)"
+              :disabled="loading"
+            >Load the first page of tokens</a>
+
           </div>
 
           <!-- Userpass tab -->
-          <div v-if="tabName === 'userpass'" class="table-responsive">
-            <table class="table is-striped is-narrow">
+          <div v-if="tabName === 'userpass'">
+            <table class="table is-fullwidth is-striped is-narrow">
               <thead>
                 <tr>
                   <th></th>
@@ -208,8 +227,8 @@
           </div>
 
           <!-- AppRole tab -->
-          <div v-if="tabName === 'approle'" class="table-responsive">
-            <table class="table is-striped is-narrow">
+          <div v-if="tabName === 'approle'">
+            <table class="table is-fullwidth is-striped is-narrow">
               <thead>
                 <tr>
                   <th></th>
@@ -243,8 +262,69 @@
             </table>
           </div>
 
-          <!-- Certificates tab -->
-          <!-- To be implemented -->
+          <!-- LDAP tab -->
+          <div v-if="tabName === 'ldap'">
+
+            <nav class="level">
+              <div class="level-item has-text-centered">
+                <div>
+                  <p class="title is-4">Groups</p>
+                </div>
+              </div>
+              <div class="level-item has-text-centered">
+                <div>
+                  <p class="title is-4">Users</p>
+                </div>
+              </div>
+            </nav>
+
+            <div class="columns">
+              <div class="column">
+
+                <!-- LDAP Groups table-->
+                <table class="table is-fullwidth is-striped is-narrow">
+                  <thead>
+                    <tr>
+                      <!-- If entry doesn't have 'Groups' field, it's a LDAP group -->
+                      <th v-for="key in tableColumns" v-if="key != 'Groups'">
+                        {{ key }}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- Ignore any entries with 'Groups' field -->
+                    <tr v-for="(entry, index) in tableData" v-if="!entry.hasOwnProperty('Groups')">
+                      <td v-for="key in tableColumns" v-if="key != 'Groups'">
+                        {{ entry[key] }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+              </div>
+              <div class="column">
+
+                <table class="table is-fullwidth is-striped is-narrow">
+                  <thead>
+                    <tr>
+                      <th v-for="key in tableColumns">
+                        {{ key }}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- If the entry has 'Groups' field, it's an LDAP user -->
+                    <tr v-for="(entry, index) in tableData" v-if="entry.hasOwnProperty('Groups')">
+                      <td v-for="key in tableColumns">
+                        {{ entry[key] }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+              </div>
+            </div>
+          </div>
 
         </article>
       </div>
@@ -261,31 +341,7 @@
 import Modal from './modals/InfoModal'
 import ConfirmModal from './modals/ConfirmModal'
 
-var TabNames = ['token', 'userpass', 'approle']
-var TabColumns = [
-  [
-    'accessor',
-    'display_name',
-    'num_uses',
-    'orphan',
-    'policies',
-    'ttl'
-  ],
-  [
-    'Name',
-    'TTL',
-    'Max_TTL',
-    'Policies'
-  ],
-  [
-    'Roleid',
-    'Policies',
-    'Token_TTL',
-    'Token_max_TTL',
-    'Secret_id_TTL',
-    'Secret_id_num_uses'
-  ]
-]
+var TabNames = ['token', 'userpass', 'approle', 'ldap']
 
 export default {
   components: {
@@ -295,17 +351,8 @@ export default {
 
   data () {
     return {
-      csrf: '',
       tabName: 'token',
       tableData: [],
-      tableColumns: [
-        'accessor',
-        'display_name',
-        'num_uses',
-        'orphan',
-        'policies',
-        'ttl'
-      ],
       showModal: false,
       showDeleteModal: false,
       selectedIndex: -1,
@@ -313,6 +360,7 @@ export default {
       lastPage: 1,
       tokenCount: 0,
       loading: false,
+
       // when adding properties here,
       // be careful with reactivity (overwritten by switchTab())
       search: {
@@ -327,23 +375,54 @@ export default {
   },
 
   mounted: function () {
-    this.switchTab(0)
-    this.$http.get('/api/users/csrf').then((response) => {
-      this.csrf = response.headers['x-csrf-token']
-    })
-    .catch((error) => {
-      this.$onError(error)
-    })
-    this.$http.get('/api/tokencount').then((response) => {
-      this.tokenCount = response.data.result
-      this.lastPage = Math.ceil(response.data.result / 300)
-    })
-    .catch((error) => {
-      this.$onError(error)
-    })
+    this.switchTab(0, false)
   },
 
   computed: {
+    session: function () {
+      return this.$store.getters.session
+    },
+
+    tableColumns: function () {
+      switch (this.tabName) {
+        case 'token': {
+          return [
+            'accessor',
+            'display_name',
+            'num_uses',
+            'orphan',
+            'policies',
+            'ttl'
+          ]
+        }
+        case 'userpass': {
+          return [
+            'Name',
+            'TTL',
+            'Max_TTL',
+            'Policies'
+          ]
+        }
+        case 'approle': {
+          return [
+            'Roleid',
+            'Policies',
+            'Token_TTL',
+            'Token_max_TTL',
+            'Secret_id_TTL',
+            'Secret_id_num_uses'
+          ]
+        }
+        case 'ldap': {
+          return [
+            'Name',
+            'Policies',
+            'Groups'
+          ]
+        }
+      }
+    },
+
     selectedItemTitle: function () {
       if (this.selectedIndex !== -1) {
         return String(this.tableData[this.selectedIndex][this.tableColumns[0]])
@@ -373,10 +452,6 @@ export default {
       } else {
         return [this.currentPage - 1, this.currentPage, this.currentPage + 1]
       }
-    },
-
-    searchRegex: function () {
-      return this.search.regex
     }
   },
 
@@ -387,11 +462,18 @@ export default {
   },
 
   methods: {
-    switchTab: function (index) {
+    // if fetchDetails is set to false, accessor details will not be fetched
+    // this lightens potentially unnecessary stress on the vault server
+    switchTab: function (index, fetchDetails = true) {
+      // switching during loading is disabled
+      if (this.loading) {
+        return
+      }
+      this.loading = true
+
       // on swap, clear data and load new column names
       this.tableData = []
       this.tabName = TabNames[index]
-      this.tableColumns = TabColumns[index]
       this.search = {
         show: false,
         str: '',
@@ -400,14 +482,89 @@ export default {
         regex: false,
         regexp: null
       }
-      // populate new table data according to tab name
-      this.$http.get('/api/users?type=' + this.tabName).then((response) => {
-        this.tableData = response.data.result
-        this.csrf = response.headers['x-csrf-token']
-      })
-      .catch((error) => {
-        this.$onError(error)
-      })
+
+      // listing tokens
+      if (this.tabName === 'token') {
+        this.$http.get('/v1/token/accessors', {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        }).then((response) => {
+          this.accessors = response.data.result
+          this.lastPage = Math.ceil(this.accessors.length / 300)
+          if (fetchDetails) {
+            this.loadPage(1) // loadPage will turn loading to false
+          } else {
+            this.loading = false
+          }
+        })
+        .catch((error) => {
+          this.loading = false
+          this.$onError(error)
+        })
+
+      // listing userpass users
+      } else if (this.tabName === 'userpass') {
+        this.$http.get('/v1/userpass/users', {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        }).then((response) => {
+          this.loading = false
+          this.tableData = response.data.result
+        })
+        .catch((error) => {
+          this.loading = false
+          this.$onError(error)
+        })
+
+      // listing approle roles
+      } else if (this.tabName === 'approle') {
+        this.$http.get('/v1/approle/roles', {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        }).then((response) => {
+          this.loading = false
+          this.tableData = response.data.result
+        })
+        .catch((error) => {
+          this.loading = false
+          this.$onError(error)
+        })
+
+      // listing ldap groups/users
+      } else if (this.tabName === 'ldap') {
+        // both ldap groups and ldap users will be in one array
+        this.tableData = []
+
+        // fetch ldap groups
+        this.$http.get('/v1/ldap/groups', {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        }).then((response) => {
+          this.loading = false
+          this.tableData = this.tableData.concat(response.data.result)
+        })
+        .catch((error) => {
+          this.loading = false
+          this.$onError(error)
+        })
+
+        // fetch ldap users
+        this.$http.get('/v1/ldap/users', {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        }).then((response) => {
+          this.loading = false
+          this.tableData = this.tableData.concat(response.data.result)
+        })
+        .catch((error) => {
+          this.loading = false
+          this.$onError(error)
+        })
+
+      // this should not be reachable through the UI by normal means
+      } else {
+        this.loading = false
+        this.$notify({
+          title: 'Invalid',
+          message: 'Unsupported tab name',
+          type: 'warning'
+        })
+      }
     },
 
     openModalBasic (index) {
@@ -428,36 +585,86 @@ export default {
     },
 
     deleteItem (index) {
-      this.$http.post('/api/users/revoke', {
-        Type: this.tabName.toLowerCase(),
-        ID: this.tableData[index][this.tableColumns[0]]
-      }, {
-        headers: {'X-CSRF-Token': this.csrf}
-      })
-      .then((response) => {
-        this.closeDeleteModal()
-        this.tableData.splice(index, 1)
-        this.$notify({
-          title: 'Success',
-          message: 'Deletion successful',
-          type: 'success'
+      // deleting a token via accessor
+      if (this.tabName === 'token') {
+        this.$http.post('/v1/token/revoke-accessor?accessor=' + this.tableData[index][this.tableColumns[0]], {}, {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        }).then((response) => {
+          this.closeDeleteModal()
+          this.tableData.splice(index, 1)
+          this.$notify({
+            title: 'Success',
+            message: 'Deletion successful',
+            type: 'success'
+          })
         })
-      })
-      .catch((error) => {
-        this.closeDeleteModal()
-        this.$onError(error)
-      })
+        .catch((error) => {
+          this.closeDeleteModal()
+          this.$onError(error)
+        })
+
+      // deleting a user via username
+      } else if (this.tabName === 'userpass') {
+        this.$http.post('/v1/userpass/delete?username=' + encodeURIComponent(this.tableData[index][this.tableColumns[0]]), {}, {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        }).then((response) => {
+          this.closeDeleteModal()
+          this.tableData.splice(index, 1)
+          this.$notify({
+            title: 'Success',
+            message: 'Deletion successful',
+            type: 'success'
+          })
+        })
+        .catch((error) => {
+          this.closeDeleteModal()
+          this.$onError(error)
+        })
+
+      // deleting an approle via role name
+      } else if (this.tabName === 'approle') {
+        this.$http.post('/v1/approle/delete?role=' + encodeURIComponent(this.tableData[index][this.tableColumns[0]]), {}, {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        }).then((response) => {
+          this.closeDeleteModal()
+          this.tableData.splice(index, 1)
+          this.$notify({
+            title: 'Success',
+            message: 'Deletion successful',
+            type: 'success'
+          })
+        })
+        .catch((error) => {
+          this.closeDeleteModal()
+          this.$onError(error)
+        })
+
+      // this should not be reachable through the UI by normal means
+      } else {
+        this.$notify({
+          title: 'Invalid',
+          message: 'Unsupported tab name',
+          type: 'warning'
+        })
+      }
     },
 
-    loadPage: function (pageNumber) {
-      if (pageNumber < 1 || pageNumber > this.lastPage || this.search.searched) {
+    loadPage: function (pg) {
+      if (pg < 1 || pg > this.lastPage || this.search.searched) {
         return
       }
-      this.currentPage = pageNumber
+      this.currentPage = pg
       this.loading = true
-      this.$http.get('/api/users?type=token&offset=' + ((this.currentPage - 1) * 300).toString()).then((response) => {
+      this.tableData = []
+
+      // construct accessor string delimited by comma, and send search request
+      this.$http.post('/v1/token/lookup-accessor', {
+        Accessors: this.accessors.slice((pg - 1) * 300, pg * 300).join(',')
+      }, {
+        headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+      })
+      .then((response) => {
         this.tableData = response.data.result
-        this.csrf = response.headers['x-csrf-token']
         this.loading = false
       })
       .catch((error) => {
@@ -500,7 +707,12 @@ export default {
 
       // make an async call for each page
       for (var i = 0; i < this.lastPage; i++) {
-        this.$http.get('/api/users?type=token&offset=' + (i * 300).toString()).then((response) => {
+        this.$http.post('/v1/token/lookup-accessor', {
+          Accessors: this.accessors.slice(i * 300, (i + 1) * 300).join(',')
+        }, {
+          headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+        })
+        .then((response) => {
           var found = false
           if (this.search.regex) {
             found = response.data.result.filter(this.itemContainsRegexExpr)
@@ -526,7 +738,7 @@ export default {
       this.loadPage(this.currentPage)
     }
 
-  }
+  } // end methods
 
 }
 </script>

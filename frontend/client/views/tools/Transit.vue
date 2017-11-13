@@ -1,78 +1,108 @@
 <template>
   <div>
-    <div class="tile is-ancestor">
+    <div class="tile is-ancestor is-vertical">
       <div class="tile is-parent">
-        <article class="tile is-child box">
+        <article class="tile is-child box is-vertical">
 
-        <div class="box">
-          <p class="title is-3 is-spaced">Encryption as a service</p>
-          <p class="subtitle is-5">Logged in user must have write access to transit key: '/{{ userTransitKey }}' </p>
-        </div>
-
-        <div class="tile is-parent is-marginless is-paddingless">
-          <div class="tile is-parent is-vertical is-6">
-            <article class="tile is-child box">
-
-              <h3 class="title is-3">Encrypt</h3>
-
-              <div class="field">
-                <p class="control">
-                  <textarea v-model="plaintext" class="textarea" placeholder="Paste something here"></textarea>
-                </p>
-              </div>
-
-              <div class="field is-pulled-right">
-                <p class="control">
-                  <a @click="encryptText" class="button is-primary is-outlined">
-                    <span>Encrypt</span>
-                    <span class="icon">
-                      <i class="fa fa-check"></i>
-                    </span>
-                  </a>
-                  <a @click="clearPlaintext" class="button is-danger is-outlined">
-                    <span>Clear</span>
-                    <span class="icon">
-                      <i class="fa fa-times"></i>
-                    </span>
-                  </a>
-                </p>
-              </div>
-
-            </article>
+          <!-- nav bar tile -->
+          <div class="tile is-parent">
+            <div class="tile is-child box">
+              <nav class="level-left">
+                <div class="level-item">
+                  <p class="subtitle is-5">
+                    Goldfish is using transit key <strong>{{editing ? ' ' : userTransitKey}}</strong>
+                      &nbsp;<p v-if="editing" class="control">
+                        <input class="input is-small"
+                        type="text" placeholder="Enter transit key"
+                        v-model="userTransitKey"
+                        @keyup.enter="editing = false">
+                      </p>
+                    <a v-if="!editing"><span class="icon" @click="changeKey()">
+                      <i class="fa fa-pencil-square-o"></i>
+                    </span></a>
+                  </p>
+                </div>
+              </nav>
+            </div>
           </div>
 
-          <div class="tile is-parent is-vertical is-6">
-            <article class="tile is-child box">
+          <!-- encrypt & decrypt tiles -->
+          <div class="tile">
 
-              <h3 class="title is-3">Decrypt</h3>
+            <!-- encrypt tile -->
+            <article class="tile is-parent is-6">
+              <div class="tile is-child box">
+                <h4 class="subtitle is-4">Encrypt</h4>
 
-              <div class="field">
-                <p class="control">
-                  <textarea v-model="cipher" class="textarea" placeholder="Paste something here"></textarea>
-                </p>
-              </div>
+                <div class="field">
+                  <p class="control">
+                    <textarea v-model="plaintext"
+                    class="textarea"
+                    placeholder="Paste something here"
+                    rows="10"></textarea>
+                  </p>
+                </div>
 
-              <div class="field is-pulled-right">
-                <p class="control">
-                  <a @click="decryptText" class="button is-primary is-outlined">
-                    <span>Decrypt</span>
-                    <span class="icon">
-                      <i class="fa fa-check"></i>
-                    </span>
-                  </a>
-                  <a @click="clearCipher" class="button is-danger is-outlined">
-                    <span>Clear</span>
-                    <span class="icon">
-                      <i class="fa fa-times"></i>
-                    </span>
-                  </a>
-                </p>
+                <div class="field is-pulled-right">
+                  <p class="control">
+                    <a @click="encryptText"
+                    class="button is-primary is-outlined"
+                    :disabled="editing">
+                      <span>Encrypt</span>
+                      <span class="icon">
+                        <i class="fa fa-check"></i>
+                      </span>
+                    </a>
+                    <a @click="clearPlaintext"
+                    class="button is-danger is-outlined">
+                      <span>Clear</span>
+                      <span class="icon">
+                        <i class="fa fa-times"></i>
+                      </span>
+                    </a>
+                  </p>
+                </div>
               </div>
             </article>
-          </div>
-        </div>
 
+            <!-- decrypt tile -->
+            <article class="tile is-parent is-6">
+              <div class="tile is-child box">
+                <h4 class="subtitle is-4">Decrypt</h4>
+
+                <div class="field">
+                  <p class="control">
+                    <textarea v-model="cipher"
+                    class="textarea"
+                    placeholder="Paste something here"
+                    rows="10"></textarea>
+                  </p>
+                </div>
+
+                <div class="field is-pulled-right">
+                  <p class="control">
+                    <a @click="decryptText"
+                    class="button is-primary is-outlined"
+                    :disabled="editing">
+                      <span>Decrypt</span>
+                      <span class="icon">
+                        <i class="fa fa-check"></i>
+                      </span>
+                    </a>
+                    <a @click="clearCipher" class="button is-danger is-outlined">
+                      <span>Clear</span>
+                      <span class="icon">
+                        <i class="fa fa-times"></i>
+                      </span>
+                    </a>
+                  </p>
+                </div>
+              </div>
+            </article>
+
+          </div>
         </article>
+
       </div>
     </div>
   </div>
@@ -89,16 +119,23 @@ export default {
 
   data () {
     return {
-      csrf: '',
       plaintext: '',
       cipher: '',
-      userTransitKey: ''
+      userTransitKey: '',
+      editing: false
+    }
+  },
+
+  computed: {
+    session: function () {
+      return this.$store.getters.session
     }
   },
 
   mounted: function () {
-    this.$http.get('/api/transit').then((response) => {
-      this.csrf = response.headers['x-csrf-token']
+    this.$http.get('/v1/transit', {
+      headers: {'X-Vault-Token': this.session ? this.session.token : ''}
+    }).then((response) => {
       this.userTransitKey = response.headers['usertransitkey']
     })
     .catch((error) => {
@@ -108,10 +145,15 @@ export default {
 
   methods: {
     encryptText: function () {
-      this.$http.post('/api/transit/encrypt', querystring.stringify({
-        plaintext: this.plaintext
+      if (this.editing) {
+        return
+      }
+
+      this.$http.post('/v1/transit/encrypt', querystring.stringify({
+        plaintext: this.plaintext,
+        key: this.userTransitKey
       }), {
-        headers: {'X-CSRF-Token': this.csrf}
+        headers: {'X-Vault-Token': this.session ? this.session.token : ''}
       })
 
       .then((response) => {
@@ -130,10 +172,15 @@ export default {
     },
 
     decryptText: function () {
-      this.$http.post('/api/transit/decrypt', querystring.stringify({
-        cipher: this.cipher
+      if (this.editing) {
+        return
+      }
+
+      this.$http.post('/v1/transit/decrypt', querystring.stringify({
+        cipher: this.cipher,
+        key: this.userTransitKey
       }), {
-        headers: {'X-CSRF-Token': this.csrf}
+        headers: {'X-Vault-Token': this.session ? this.session.token : ''}
       })
 
       .then((response) => {
@@ -156,6 +203,10 @@ export default {
     },
     clearCipher: function () {
       this.cipher = ''
+    },
+
+    changeKey: function () {
+      this.editing = true
     }
   }
 }

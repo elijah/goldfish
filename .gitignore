@@ -1,5 +1,8 @@
-server
-server.exe
-server.log
 public
 public.*
+**/.DS_STORE
+**/.vagrant
+goldfish-linux-amd64
+goldfish-windows-amd64.exe
+rice-box.go
+server

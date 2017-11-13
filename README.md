@@ -1,12 +1,23 @@
 <div align="center">
 
-<h3>Goldfish Vault UI - <a href="https://vault-ui.io">Live Demo </a> <img height="22" src=https://circleci.com/gh/Caiyeon/goldfish.svg?style=svg></h3>
+<h3>Goldfish Vault UI - <a href="https://vault-ui.io">Live Demo </a></h3>
 
 <p><img width="250" height="194" src="https://github.com/Caiyeon/goldfish/blob/master/frontend/client/assets/logo%402x.png"></p>
 
-<h3>Show support for development by starring this repo!</a></h3>
+<h3>
+	<a href='https://ko-fi.com/A4242ER7' target='_blank'>
+		<img height='32' style='border:0px;height:32px;' src='https://az743702.vo.msecnd.net/cdn/kofi4.png?v=0' border='0' alt='Donation' />
+	</a>
+	<img height="32" src=https://circleci.com/gh/Caiyeon/goldfish.svg?style=svg>
+	<br>
+	Share this repo with your colleagues!
+</h3>
 
 </div>
+
+<a target='_blank' rel='nofollow' href='https://app.codesponsor.io/link/WYT8J9rrsTK63FQg68eQYsJN/Caiyeon/goldfish'>
+  <img alt='Sponsor' width='888' height='68' src='https://app.codesponsor.io/embed/WYT8J9rrsTK63FQg68eQYsJN/Caiyeon/goldfish.svg' />
+</a>
 
 ## What is this?
 
@@ -18,17 +29,15 @@ Goldfish answers many auditing and administration questions that Vault API can't
 * Which policies, users, and tokens can access this particular secret path?
 * The unseal admins are working from home, but we need a policy changed.
 	* How do we generate a root token only for this change, and make sure it's revoked after?
-	* Optionally send the changeID to a slack channel, so admins can pull up the details and approve/reject
-* I store my policies on a Github repo. Can I deploy this all in one go? [See more](https://github.com/Caiyeon/goldfish/wiki/Features#request-policy-change-by-github-commit)
-* *Coming soon* If I remove this secret/policy, will anybody's workflow break?
+* I store my policies on a Github repo. Can I deploy all my policies in one go? [See more](https://github.com/Caiyeon/goldfish/wiki/Features#request-policy-change-by-github-commit)
+* If I remove this secret/policy, will anybody's workflow break?
 
 
 <!--
 -->
-## Running goldfish in production
+## [Deploy goldfish in production in minutes!](https://github.com/Caiyeon/goldfish/wiki/Production-Deployment)
 
-See: [Production Deployment](https://github.com/Caiyeon/goldfish/wiki/Production-Deployment)
-
+Seriously, the instructions fit on one screen!
 
 
 <!--
@@ -37,14 +46,14 @@ See: [Production Deployment](https://github.com/Caiyeon/goldfish/wiki/Production
 
 * [x] Hot-loadable server settings from a provided vault endpoint
 * [x] Displaying a vault endpoint as a 'bulletin board' in homepage
-* [x] **Logging in** with token, userpass, or github
+* [x] **Logging in** with token, userpass, github, or LDAP
 * [x] **Secret** Reading/editing/creating/listing
 * [x] **Auth** Searching/creating/listing/deleting
 * [x] **Mounts** Listing
 * [x] **Policies** Searching/Listing
 * [x] Encrypting and decrypting arbitrary strings using transit backend
 
-#### Planned major features: Soon<sup>TM</sup>
+#### Major features: [See wiki for more](https://github.com/Caiyeon/goldfish/wiki/Features)
 * [x] **DONE!** Searching tokens by policy [walkthrough](https://github.com/Caiyeon/goldfish/wiki/Features#searching-tokens)
 	- E.g. Display all tokens that have the policy 'admins'
 * [x] **DONE!** Searching policy by rule [walkthrough](https://github.com/Caiyeon/goldfish/wiki/Features#searching-policies)
@@ -57,10 +66,15 @@ See: [Production Deployment](https://github.com/Caiyeon/goldfish/wiki/Production
 	- Fetch a folder of policies from a commit in github
 	- Admins can enter their unseal tokens for approval to set vault policies according to policies found
 	- Change dozens of policies in one go!
-* [ ] Resource dependency chain
+* [x] **DONE!** Resource dependency chain
 	- E.g. Will removing a particular policy affect current users?
-* [ ] SAML to LDAP integration
-* [ ] Secret backend specific tools (e.g. AWS backend)
+	- Will removing a mount or secret path affect current users?
+* [ ] Certificate management panel
+	- If vault is a certificate authority, there should be a user-friendly panel of details and statistics
+* [ ] Moving root tokens away from the human eye
+	- More root operations like mount tuning should also be done via request & approval basis, like policy changes
+* [ ] Database management panel
+	- Vault 0.7.3 allows for multiple db connections per backend, but lacks a management system
 
 
 
@@ -71,7 +85,7 @@ See: [Production Deployment](https://github.com/Caiyeon/goldfish/wiki/Production
 ![](screenshots/Login.png)
 
 
-![](screenshots/Request.png)
+![](screenshots/Policy_request_approve.png)
 
 
 ![](screenshots/BulletinBoard.png)
@@ -89,60 +103,33 @@ See: [Production Deployment](https://github.com/Caiyeon/goldfish/wiki/Production
 
 <!--
 -->
-## Developing or testing goldfish
+## Developing Goldfish
 
 #### Running locally
-You'll need go (v1.8), npm (>=3), and nodejs (>=5).
+You'll need go (v1.9), nodejs (v6), and npm (v5)
 
 ```bash
 # hashicorp vault ui
 
-# download goldfish first
+# clone goldfish
 go get github.com/caiyeon/goldfish
 cd $GOPATH/src/github.com/caiyeon/goldfish
 
-# you'll need a vault instance. Force a root token for consistency
-vault server -dev -dev-root-token-id=goldfish &
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=goldfish
+# running goldfish server in -dev will spin up a local vault instance for you
+go run server.go -dev
 
-# this transit key is needed to encrypt/decrypt user credentials
-vault mount transit
-vault write -f transit/keys/goldfish
-
-# see vagrant/policies/goldfish.hcl for the required policy.
-# transit key is not changable, but the secret path containing run-time settings can be changed
-vault policy-write goldfish vagrant/policies/goldfish.hcl
-
-# goldfish launches strictly from approle, because passing a token that humans can see would be silly
-vault auth-enable approle
-vault write auth/approle/role/goldfish role_name=goldfish secret_id_ttl=5m token_ttl=480h \
-token_max_ttl=720h secret_id_num_uses=1 policies=default,goldfish
-vault write auth/approle/role/goldfish/role-id role_id=goldfish
-
-# build the backend server
-go install
-
-# run backend server with secret_id generated from approle
-# -dev arg skips reading settings from vault and uses a default set
-goldfish -dev -vault_token $(vault write -f -wrap-ttl=20m \
--format=json auth/approle/role/goldfish/secret-id \
-| jq -r .wrap_info.token)
-
-# run frontend in dev mode (with hot reload)
+# running goldfish frontend in dev mode will allow for hot-reload of frontend files
 cd frontend
 sudo npm install -g cross-env
 npm install
 npm run dev
 
 # a browser window/tab should open, pointing directly to goldfish
-
-# "-dev" disables many security standards. DO NOT USE -dev IN PRODUCTION!
 ```
 
 
 #### Using a VM
-While go and npm works decently on Windows, there is a one-line solution to spinning up a VM which will contain a dev vault instance and goldfish with hot-reload.
+A vagrantfile is available as well
 
 You'll need [Vagrant](https://www.vagrantup.com/downloads.html) and [VirtualBox](https://www.virtualbox.org/). On Windows, a restart after installation is needed.
 
@@ -154,7 +141,13 @@ cd goldfish/vagrant
 # this will take awhile
 vagrant up --provision
 
-# open up localhost:8001 in chrome on your local machine. You can login with token 'goldfish'
+# go to localhost:8080 on your local machine and login with token 'goldfish'
+
+# changes to frontend .vue files will be hot-reloaded
+# to force a full reload for the frontend, ssh into the machine and run
+#     `sudo systemctl restart goldfish_frontend.service`
+# to recompile and re-run the backend, ssh into the machine and run
+#     `sudo systemctl restart goldfish.service`
 ```
 
 
@@ -162,12 +155,9 @@ vagrant up --provision
 <!--
 -->
 ## Development
-Goldfish is being actively maintained (with new features every 1-2 weeks).
+Goldfish is in very active development.
 
-Contributions are welcomed. Feel free to pick up an issue and make a pull request, or open a new issue for a feature enhancement.
-
-The Vagrant setup should provide a consistent dev environment.
-
+Pull requests and feature requests are welcome. Feel free to suggest new workflows by opening issues.
 
 
 <!--
