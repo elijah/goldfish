@@ -26,6 +26,9 @@ curl ${CURL_OPT} -X POST ${VAULT_ADDR}/v1/transit/keys/goldfish
 # production goldfish needs a generic secret endpoint to hot reload settings from. See Configuration page for details
 curl ${CURL_OPT} ${VAULT_ADDR}/v1/secret/goldfish -d '{"DefaultSecretPath":"secret/", "TransitBackend":"transit", "UserTransitKey":"usertransit", "ServerTransitKey":"goldfish", "BulletinPath":"secret/bulletins/"}'
 
+# add a generic secret endpoint for bulletin feature with generated sample
+curl ${CURL_OPT} ${VAULT_ADDR}/v1/secret/bulletins/a -d '{"message":"This page is useful for displaying site-wide info that may concern vault users.E.g. upcoming down-time, policy changes, new mounts , etc.", "title":"Usefulness", "type":"is-success"}'
+
 #Generate token to start Goldfish with
 WRAPPED_TOKEN=`curl ${CURL_OPT} --header "X-Vault-Wrap-TTL: 20" -X POST ${VAULT_ADDR}/v1/auth/approle/role/goldfish/secret-id | jq -r .wrap_info.token`
 
