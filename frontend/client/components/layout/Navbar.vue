@@ -1,7 +1,7 @@
 <template>
   <section class="hero is-bold app-navbar animated" :class="{ slideInDown: show, slideOutDown: !show }">
     <div class="hero-head">
-      <nav class="navbar">
+      <nav class="navbar is-transparent">
 
         <div class="navbar-brand">
           <a class="navbar-item" href="/">
@@ -78,6 +78,13 @@
 
           <!-- rightside -->
           <div class="navbar-end">
+            <div class="navbar-item" v-if="holidaySeasons">
+              <div class="tags has-addons">
+                <span class="tag is-success"><i class="fa fa-gift"></i>&nbsp;&nbsp;Happy Holidays!</span>
+                <span class="tag is-danger">Happy New Years!&nbsp;&nbsp;<i class="fa fa-smile-o"></i></span>
+              </div>
+            </div>
+
             <div class="navbar-item" v-if="updateAvailable">
               <div class="tags has-addons">
                 <a class="tag is-primary" :href="latestRelease['html_url']" target="_blank">Update Available</a>
@@ -144,7 +151,8 @@ export default {
       profileDropdown: false,
       position: ['center', 'bottom', 'center', 'top'],
       now: moment(),
-      latestRelease: {}
+      latestRelease: {},
+      expirationWarning: false
     }
   },
 
@@ -153,6 +161,31 @@ export default {
     setInterval(() => {
       this.now = moment()
     }, 1000)
+
+    // check every 30s if the user's token will expire in 10 mins
+    setInterval(() => {
+      if (this.session === null || this.session['token_expiry'] === 'never') {
+        return
+      }
+      // if token will expire in 10 minutes
+      let tokenExpires = moment(this.session['token_expiry'], 'ddd, h:mm:ss A MMMM Do YYYY')
+      if (tokenExpires.diff(this.now) < 600000) {
+        // show user warning
+        if (!this.expirationWarning) {
+          this.$message({
+            message: 'Your token expires in 10 minutes',
+            type: 'warning',
+            duration: 0,
+            showCloseButton: true
+          })
+          // set warning flag true so that user does not continue to get warnings
+          this.expirationWarning = true
+        }
+      } else {
+        // if user's token has been renewed after warning, reset warning flag
+        this.expirationWarning = false
+      }
+    }, 30000)
 
     // if session cookie is still valid, load session data
     let raw = window.localStorage.getItem('session')
@@ -195,19 +228,41 @@ export default {
     // parses current package info vs latest stable release to detect if an update is available
     updateAvailable: function () {
       if (this.latestRelease && this.latestRelease.tag_name) {
-        var currVersions = this.pkginfo.version.split('v').pop().split('-')[0].split('.')
-        var newVersions = this.latestRelease.tag_name.split('v').pop().split('-')[0].split('.')
-        if (newVersions[0] > currVersions[0]) {
+        // split curr version into 3 numbers
+        var curr = this.pkginfo.version
+        if (curr.substr(0, 1) === 'v') {
+          curr = curr.substr(1)
+        }
+        var currV = curr.split('-')[0].split('.').map(Number)
+
+        // split new version into 3 numbers
+        var newest = this.latestRelease.tag_name
+        if (newest.substr(0, 1) === 'v') {
+          newest = newest.substr(1)
+        }
+        var newestV = newest.split('-')[0].split('.').map(Number)
+
+        // convert string numbers into ints and compare according to rank
+        if (newestV[0] > currV[0]) {
           return true
-        } else if (newVersions[0] === currVersions[0]) {
-          if (newVersions[1] > currVersions[1]) {
+        } else if (newestV[0] === currV[0]) {
+          if (newestV[1] > currV[1]) {
             return true
-          } else if (newVersions[1] === currVersions[1] && newVersions[2] > currVersions[2]) {
+          } else if (newestV[1] === currV[1] && newestV[2] > currV[2]) {
             return true
           }
         }
       }
       return false
+    },
+
+    // computed client-side only :)
+    holidaySeasons: function () {
+      return moment().isBetween(
+        moment('22/12/2017', 'DD/MM/YYYY'),
+        moment('3/1/2018', 'DD/MM/YYYY'),
+        'days', '[]'
+      )
     }
   },
 
@@ -252,13 +307,12 @@ export default {
 </script>
 
 <style lang="scss">
-@import '~bulma/sass/utilities/variables';
-
 .app-navbar {
   position: fixed;
   min-width: 100%;
   z-index: 8;
   box-shadow: 0 2px 3px rgba(17, 17, 17, 0.1), 0 0 0 1px rgba(17, 17, 17, 0.1);
+  background-color: white;
 
   .container {
     margin: auto 10px;

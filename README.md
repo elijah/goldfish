@@ -15,13 +15,12 @@
 
 </div>
 
-<a target='_blank' rel='nofollow' href='https://app.codesponsor.io/link/WYT8J9rrsTK63FQg68eQYsJN/Caiyeon/goldfish'>
-  <img alt='Sponsor' width='888' height='68' src='https://app.codesponsor.io/embed/WYT8J9rrsTK63FQg68eQYsJN/Caiyeon/goldfish.svg' />
-</a>
 
 ## What is this?
 
-[Goldfish](https://vault-ui.io) is a HashiCorp Vault UI
+<div class="center">
+<blockquote class="twitter-tweet" data-cards="hidden" data-lang="en"><p lang="en" dir="ltr"><a href="https://vault-ui.io">Goldfish</a> - A HashiCorp Vault UI and workflow tool. <a href="https://t.co/uVWLuQEBMi">pic.twitter.com/uVWLuQEBMi</a></p>&mdash; Kelsey Hightower (@kelseyhightower) <a href="https://twitter.com/kelseyhightower/status/899717092496121856?ref_src=twsrc%5Etfw">August 21, 2017</a></blockquote>
+</div>
 
 Goldfish answers many auditing and administration questions that Vault API can't:
 
@@ -69,13 +68,6 @@ Seriously, the instructions fit on one screen!
 * [x] **DONE!** Resource dependency chain
 	- E.g. Will removing a particular policy affect current users?
 	- Will removing a mount or secret path affect current users?
-* [ ] Certificate management panel
-	- If vault is a certificate authority, there should be a user-friendly panel of details and statistics
-* [ ] Moving root tokens away from the human eye
-	- More root operations like mount tuning should also be done via request & approval basis, like policy changes
-* [ ] Database management panel
-	- Vault 0.7.3 allows for multiple db connections per backend, but lacks a management system
-
 
 
 <!--
@@ -85,7 +77,7 @@ Seriously, the instructions fit on one screen!
 ![](screenshots/Login.png)
 
 
-![](screenshots/Policy_request_approve.png)
+![](screenshots/PolicyRequest.png)
 
 
 ![](screenshots/BulletinBoard.png)
@@ -97,16 +89,13 @@ Seriously, the instructions fit on one screen!
 ![](screenshots/Users.png)
 
 
-![](screenshots/Policies.png)
-
-
 
 <!--
 -->
 ## Developing Goldfish
 
 #### Running locally
-You'll need go (v1.9), nodejs (v6), and npm (v5)
+You'll need go (v1.9), nodejs (v8.2), and npm (v5)
 
 ```bash
 # hashicorp vault ui
@@ -151,6 +140,26 @@ vagrant up --provision
 ```
 
 
+#### Compiling
+You'll need Go(v1.9), Nodejs (v8.2.0), Npm (v5)
+
+Note that using different versions (of nodeJS, especially) will cause differences in the final binary.
+
+```bash
+# download the source code
+go get -d github.com/caiyeon/goldfish
+cd $GOPATH/src/github.com/caiyeon/goldfish
+
+# resetting to a tagged version is recommended
+# no support will be given to arbitrary commits on the master branch
+git fetch --all --tags --prune
+git checkout tags/<version> # version could be, for example, v0.8.0
+
+# compile the binary
+sh build.sh
+```
+
+
 
 <!--
 -->
@@ -180,6 +189,12 @@ Backend:
 
 See: [Architecture](https://github.com/Caiyeon/goldfish/wiki/Architecture)
 
+
+<!--
+-->
+## Sponsored by
+
+![](screenshots/DO_Logo_Horizontal_Blue.png)
 
 
 <!--

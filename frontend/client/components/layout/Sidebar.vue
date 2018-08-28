@@ -133,7 +133,7 @@ export default {
 </script>
 
 <style lang="scss">
-@import '~bulma/sass/utilities/variables';
+// @import '~bulma/sass/utilities/initial-variables';
 @import '~bulma/sass/utilities/mixins';
 
 .app-sidebar {
@@ -166,7 +166,6 @@ export default {
     &:not(.is-angle) {
       position: relative;
       right: 3px;
-      top: -1px;
     }
   }
 

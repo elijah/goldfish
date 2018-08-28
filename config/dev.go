@@ -24,6 +24,12 @@ import (
 	credRadius "github.com/hashicorp/vault/builtin/credential/radius"
 	credUserpass "github.com/hashicorp/vault/builtin/credential/userpass"
 
+	physAzure "github.com/hashicorp/vault/physical/azure"
+	physConsul "github.com/hashicorp/vault/physical/consul"
+	physFile "github.com/hashicorp/vault/physical/file"
+	physGCS "github.com/hashicorp/vault/physical/gcs"
+	physInmem "github.com/hashicorp/vault/physical/inmem"
+
 	"github.com/hashicorp/vault/builtin/logical/aws"
 	"github.com/hashicorp/vault/builtin/logical/cassandra"
 	"github.com/hashicorp/vault/builtin/logical/consul"
@@ -43,6 +49,7 @@ import (
 	"github.com/hashicorp/vault/command"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/meta"
+	"github.com/hashicorp/vault/physical"
 	"github.com/mitchellh/cli"
 )
 
@@ -166,22 +173,24 @@ func setupVault(addr, rootToken string) error {
 	}); err != nil {
 		return err
 	}
-	if _, err := client.Logical().Write("pki/roles/example-dot-com", map[string]interface{}{
-		"allowed_domains":  "example.com",
-		"allow_subdomains": "true",
-		"max_ttl":          "72h",
+	if _, err := client.Logical().Write("pki/roles/goldfish", map[string]interface{}{
+		"allow_any_name":    "true",
+		"allow_subdomains":  "true",
+		"allow_baredomains": "true",
+		"allow_localhost":   "true",
+		"max_ttl":           "3m",
 	}); err != nil {
 		return err
 	}
 
 	// generate a couple of certificates
-	if _, err := client.Logical().Write("pki/issue/example-dot-com", map[string]interface{}{
-		"common_name": "blah.example.com",
+	if _, err := client.Logical().Write("pki/issue/goldfish", map[string]interface{}{
+		"common_name": "localhost",
 	}); err != nil {
 		return err
 	}
-	if _, err := client.Logical().Write("pki/issue/example-dot-com", map[string]interface{}{
-		"common_name": "blah2.example.com",
+	if _, err := client.Logical().Write("pki/issue/goldfish", map[string]interface{}{
+		"common_name": "localhost",
 	}); err != nil {
 		return err
 	}
@@ -283,6 +292,17 @@ func initDevVaultCore() (string, chan struct{}) {
 		},
 		ShutdownCh: shutdownCh,
 		SighupCh:   command.MakeSighupCh(),
+		PhysicalBackends: map[string]physical.Factory{
+			"azure":                  physAzure.NewAzureBackend,
+			"consul":                 physConsul.NewConsulBackend,
+			"file":                   physFile.NewFileBackend,
+			"file_transactional":     physFile.NewTransactionalFileBackend,
+			"gcs":                    physGCS.NewGCSBackend,
+			"inmem":                  physInmem.NewInmem,
+			"inmem_ha":               physInmem.NewInmemHA,
+			"inmem_transactional":    physInmem.NewTransactionalInmem,
+			"inmem_transactional_ha": physInmem.NewTransactionalInmemHA,
+		},
 	}).Run([]string{
 		"-dev",
 		"-dev-listen-address=127.0.0.1:8200",
@@ -388,5 +408,12 @@ path "transit/encrypt/goldfish" {
 }
 path "transit/decrypt/goldfish" {
   capabilities = ["read", "update"]
+}
+
+
+# [optional]
+# for goldfish to fetch certificates from PKI backend
+path "pki/issue/goldfish" {
+  capabilities = ["update"]
 }
 `
