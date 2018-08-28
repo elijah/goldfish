@@ -266,7 +266,7 @@
               :class="selectedPolicies.indexOf('root') > -1 ? 'is-danger' : ''"
               @click="createToken()"
               :disabled="selectedPolicies.length === 0
-              || this.payloadJSON.metadata === 'INVALID JSON'
+              || this.payloadJSON.meta === 'INVALID JSON'
               || (this.selectedRole !== '' && this.bOrphan)">
                 Create {{selectedPolicies.indexOf('root') > -1 ? 'Root' : ''}} Token
               </button>
@@ -278,7 +278,7 @@
               :class="selectedPolicies.indexOf('root') > -1 ? 'is-danger' : ''"
               @click="createTokenRequest()"
               :disabled="selectedPolicies.length === 0
-              || this.payloadJSON.metadata === 'INVALID JSON'
+              || this.payloadJSON.meta === 'INVALID JSON'
               || (this.selectedRole !== '' && this.bOrphan)">
                 Request {{selectedPolicies.indexOf('root') > -1 ? 'Root' : ''}} Token
               </button>
@@ -328,12 +328,19 @@
               </div>
             </article>
           </div>
+          <div v-if="this.payloadJSON.meta === 'INVALID JSON'" class="field">
+            <article class="message is-warning">
+              <div class="message-body">
+                <strong>Warning: metadata is not valid JSON!</strong>
+              </div>
+            </article>
+          </div>
 
           <!-- Role details -->
           <div v-if="selectedRole && selectedRoleDetails" class="field">
             <label class="label">Selected role: {{selectedRole}}</label>
             <article class="message is-info">
-              <pre v-highlightjs="JSON.stringify(selectedRoleDetails, null, '    ')"><code class="javascript"></code></pre>
+              <pre class="is-paddingless" v-highlightjs="JSON.stringify(selectedRoleDetails, null, '    ')"><code class="javascript"></code></pre>
             </article>
           </div>
 
@@ -341,7 +348,7 @@
           <div v-if="createdToken" class="field">
             <label class="label">Created token:</label>
             <article class="message is-success">
-              <pre v-highlightjs="JSON.stringify(createdToken, null, '    ')"><code class="javascript"></code></pre>
+              <pre class="is-paddingless" v-highlightjs="JSON.stringify(createdToken, null, '    ')"><code class="javascript"></code></pre>
             </article>
           </div>
 
@@ -349,7 +356,7 @@
           <div class="field">
             <label class="label">Payload preview:</label>
             <article class="message is-primary">
-              <pre v-highlightjs="JSON.stringify(payloadJSON, null, '    ')"><code class="javascript"></code></pre>
+              <pre class="is-paddingless" v-highlightjs="JSON.stringify(payloadJSON, null, '    ')"><code class="javascript"></code></pre>
             </article>
           </div>
 
@@ -364,7 +371,7 @@
 </template>
 
 <script>
-import VbSwitch from 'vue-bulma-switch'
+import VbSwitch from '../vue_bulma_modules/vue-bulma-switch'
 
 export default {
   components: {
@@ -443,7 +450,7 @@ export default {
         'explicit_max_ttl': this.stringToSeconds(this.max_ttl).toString() + 's',
         'renewable': !!this.bRenewable,
         'no_parent': !!this.bNoParent,
-        'period': this.bPeriodic ? this.stringToSeconds(this.max_ttl).toString() + 's' : '',
+        'period': this.bPeriodic ? this.stringToSeconds(this.period_ttl).toString() + 's' : '',
         'no_default_policy': this.selectedPolicies.indexOf('default') === -1,
         'policies': this.selectedPolicies
       }

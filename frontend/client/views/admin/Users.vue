@@ -165,7 +165,9 @@
                   <td width="34">
                   <span class="icon">
                     <a @click="openModalBasic(index)">
-                      <i class="fa fa-info"></i>
+                      <span class="icon has-text-info">
+                        <i class="fa fa-info-circle"></i>
+                      </span>
                     </a>
                   </span>
                   </td>
@@ -207,7 +209,9 @@
                   <td width="34">
                     <span class="icon">
                       <a @click="openModalBasic(index)">
-                        <i class="fa fa-info"></i>
+                        <span class="icon has-text-info">
+                          <i class="fa fa-info-circle"></i>
+                        </span>
                       </a>
                     </span>
                   </td>
@@ -243,7 +247,9 @@
                   <td width="34">
                     <span class="icon">
                       <a @click="openModalBasic(index)">
-                        <i class="fa fa-info"></i>
+                        <span class="icon has-text-info">
+                          <i class="fa fa-info-circle"></i>
+                        </span>
                       </a>
                     </span>
                   </td>
@@ -330,9 +336,21 @@
       </div>
     </div>
 
-    <modal :visible="showModal" :title="selectedItemTitle" :info="selectedItemInfo" @close="closeModalBasic"></modal>
+    <modal
+      :visible="showModal"
+      :title="selectedItemTitle"
+      :info="selectedItemInfo"
+      :infoIsJSON="true"
+      @close="closeModalBasic">
+    </modal>
 
-    <confirmModal :visible="showDeleteModal" :title="confirmDeletionTitle" :info="selectedItemInfo" @close="closeDeleteModal" @confirmed="deleteItem(selectedIndex)"></confirmModal>
+    <confirmModal
+      :visible="showDeleteModal"
+      :title="confirmDeletionTitle"
+      :info="selectedItemInfo"
+      @close="closeDeleteModal"
+      @confirmed="deleteItem(selectedIndex)">
+    </confirmModal>
 
   </div>
 </template>
@@ -425,13 +443,13 @@ export default {
 
     selectedItemTitle: function () {
       if (this.selectedIndex !== -1) {
-        return String(this.tableData[this.selectedIndex][this.tableColumns[0]])
+        return 'Details'
       }
       return ''
     },
     selectedItemInfo: function () {
       if (this.selectedIndex !== -1) {
-        return 'This modal panel is under construction'
+        return JSON.stringify(this.tableData[this.selectedIndex], null, '\t')
       }
       return ''
     },
@@ -754,9 +772,5 @@ export default {
 
   .fa-trash-o {
     color: red;
-  }
-
-  .fa-info {
-    color: lightskyblue;
   }
 </style>

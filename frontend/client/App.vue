@@ -58,14 +58,23 @@ export default {
   animation-duration: .377s;
 }
 
-@import '~bulma';
+// import bulma initial variables
+@import "~bulma/sass/utilities/initial-variables";
+@import "~bulma/sass/utilities/functions";
+@import "~bulma/sass/utilities/derived-variables.sass";
 
-@import '~wysiwyg.css/wysiwyg.sass';
+// set custom color scheme
+$navbar-dropdown-item-hover-color: $link;
+
+// import the rest of bulma
+@import '~bulma';
 
 $fa-font-path: '~font-awesome/fonts/';
 @import '~font-awesome/scss/font-awesome';
 
 @import '~highlight.js/styles/github.css';
+
+@import '~diff2html/dist/diff2html.css';
 
 pre > code {
   font-size: 16px;
